@@ -7,25 +7,19 @@
 body {
   min-width: 320px;
   margin: 0;
-  background: var(--canvas, #fff7fb);
+  background: var(--canvas, #fafafa);
 }
 
 .portal-page {
   min-height: 100vh;
-  color: var(--ink, #302433);
-  background:
-    radial-gradient(
-      ellipse at 50% -18rem,
-      rgba(240, 68, 148, 0.1),
-      transparent 38rem
-    ),
-    var(--canvas, #fff7fb);
-  font-family: var(--font-body, "Manrope Variable"), sans-serif;
+  color: var(--ink, #181d27);
+  background: var(--canvas, #fafafa);
+  font-family: var(--font-body);
 }
 
 .portal-header {
   width: min(100% - 48px, 1160px);
-  height: 76px;
+  height: 64px;
   margin: 0 auto;
   display: flex;
   align-items: center;
@@ -34,8 +28,8 @@ body {
 
 .portal-brand {
   color: var(--brand-pink-strong, #ce246f);
-  font-family: var(--font-display, "Space Grotesk Variable"), sans-serif;
-  font-size: 23px;
+  font-family: var(--font-body);
+  font-size: 20px;
   font-weight: 700;
   line-height: 1;
   letter-spacing: -0.07em;
@@ -43,13 +37,13 @@ body {
 }
 
 .portal-main {
-  width: min(100% - 40px, 920px);
+  width: min(100% - 40px, 800px);
   margin: 0 auto;
-  padding: clamp(36px, 6vw, 70px) 0 54px;
+  padding: 32px 0 40px;
 }
 
 .portal-intro {
-  margin: 0 auto 32px;
+  margin: 0 auto 18px;
   text-align: center;
 }
 
@@ -57,8 +51,8 @@ body {
 .section-eyebrow {
   margin: 0;
   color: var(--brand-pink-strong, #ce246f);
-  font-size: 13px;
-  line-height: 1.4;
+  font-size: 14px;
+  line-height: 20px;
   font-weight: 800;
   letter-spacing: 0.11em;
   text-transform: uppercase;
@@ -66,29 +60,29 @@ body {
 
 .portal-intro h1 {
   max-width: 800px;
-  margin: 12px auto 10px;
-  color: var(--ink, #302433);
-  font-family: var(--font-display, "Space Grotesk Variable"), sans-serif;
-  font-size: clamp(42px, 6vw, 56px);
+  margin: 0 auto 6px;
+  color: var(--ink, #181d27);
+  font-family: var(--font-display, var(--font-body));
+  font-size: clamp(30px, 4vw, 36px);
   font-weight: 650;
-  letter-spacing: -0.055em;
-  line-height: 1.06;
+  letter-spacing: -0.04em;
+  line-height: 38px;
 }
 
 .portal-intro > p:last-child {
   max-width: 560px;
   margin: 0 auto;
-  color: var(--muted, #75636f);
+  color: var(--muted, #535862);
   font-size: 16px;
-  line-height: 1.6;
+  line-height: 24px;
 }
 
 .portal-card {
   overflow: hidden;
-  border: 1px solid var(--line, #eedfe7);
-  border-radius: 22px;
+  border: 1px solid var(--line, #e9eaeb);
+  border-radius: 12px;
   background: var(--surface, #fff);
-  box-shadow: 0 22px 65px rgba(105, 36, 69, 0.075);
+  box-shadow: var(--shadow-xs, 0 1px 2px rgb(10 13 18 / 5%));
 }
 
 .portal-tabs-root {
@@ -100,24 +94,24 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 5px;
-  min-height: 68px;
-  padding: 10px;
-  border-bottom: 1px solid var(--line, #eedfe7);
-  background: #fffafd;
+  min-height: 58px;
+  padding: 6px;
+  border-bottom: 1px solid var(--line, #e9eaeb);
+  background: #f8f9fa;
 }
 
 .portal-tab {
   position: relative;
   z-index: 1;
   min-width: 0;
-  min-height: 46px;
-  padding: 10px 16px;
+  min-height: 44px;
+  padding: 8px 12px;
   border: 0;
-  border-radius: 13px;
+  border-radius: 8px;
   background: transparent;
-  color: var(--muted, #75636f);
+  color: var(--muted, #535862);
   font: inherit;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 750;
   cursor: pointer;
   transition:
@@ -128,7 +122,7 @@ body {
 .portal-tab[data-active] {
   color: #fff;
   background: var(--brand-pink, #f04494);
-  box-shadow: 0 6px 14px rgba(206, 36, 111, 0.2);
+  box-shadow: var(--shadow-xs, 0 1px 2px rgb(10 13 18 / 5%));
 }
 
 .portal-tab:focus-visible,
@@ -141,30 +135,30 @@ body {
 }
 
 .portal-panel {
-  padding: clamp(22px, 5vw, 44px) clamp(20px, 6vw, 56px) 42px;
+  padding: 24px 28px 26px;
   outline: none;
 }
 
 .panel-heading {
-  margin: 0 0 26px;
+  margin: 0 0 18px;
 }
 
 .panel-heading h2,
 .request-success h2 {
   margin: 0;
-  color: var(--ink, #302433);
-  font-family: var(--font-display, "Space Grotesk Variable"), sans-serif;
-  font-size: clamp(28px, 4vw, 32px);
-  font-weight: 650;
-  letter-spacing: -0.04em;
-  line-height: 1.17;
+  color: var(--ink, #181d27);
+  font-family: var(--font-display, var(--font-body));
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 32px;
 }
 
 .panel-heading p {
   margin: 8px 0 0;
-  color: var(--muted, #75636f);
-  font-size: 15px;
-  line-height: 1.55;
+  color: var(--muted, #535862);
+  font-size: 16px;
+  line-height: 24px;
 }
 
 .panel-heading .pending-note {
@@ -174,26 +168,26 @@ body {
 .request-form {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 18px;
+  gap: 16px;
 }
 
 .portal-field {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .portal-field-label {
-  color: #493a45;
+  color: var(--ink, #181d27);
   font-size: 14px;
-  line-height: 1.35;
+  line-height: 20px;
   font-weight: 750;
 }
 
@@ -212,14 +206,14 @@ body {
   min-width: 0;
   min-height: 48px;
   padding: 11px 14px;
-  border: 1px solid #dfced8;
-  border-radius: 11px;
+  border: 1px solid var(--line, #e9eaeb);
+  border-radius: 8px;
   outline: none;
   background: #fff;
-  color: var(--ink, #302433);
+  color: var(--ink, #181d27);
   font: inherit;
   font-size: 16px;
-  line-height: 1.45;
+  line-height: 24px;
   transition:
     border-color 150ms ease,
     box-shadow 150ms ease,
@@ -230,18 +224,18 @@ body {
 .portal-field select:focus,
 .aired-date-row input:focus {
   border-color: var(--brand-pink, #f04494);
-  box-shadow: 0 0 0 4px rgba(240, 68, 148, 0.12);
+  box-shadow: 0 0 0 3px rgba(240, 68, 148, 0.14);
 }
 
 .portal-input::placeholder,
 .portal-field select:invalid {
-  color: #95828e;
+  color: #717680;
 }
 
 .portal-input:disabled,
 .portal-field select:disabled {
-  background: #fff8fb;
-  color: #8a7682;
+  background: #f8f9fa;
+  color: #535862;
   cursor: not-allowed;
 }
 
@@ -250,11 +244,11 @@ body {
   padding-right: 44px;
 }
 .portal-field textarea.portal-input {
-  min-height: 112px;
+  min-height: 96px;
   resize: vertical;
 }
 .portal-field textarea.portal-input[rows="3"] {
-  min-height: 92px;
+  min-height: 80px;
 }
 
 .select-wrap,
@@ -272,14 +266,14 @@ body {
   position: absolute;
   top: 50%;
   right: 14px;
-  color: #8b7180;
+  color: #717680;
   transform: translateY(-50%);
 }
 
 .portal-field-hint {
-  color: var(--muted, #75636f);
-  font-size: 13px;
-  line-height: 1.45;
+  color: var(--muted, #535862);
+  font-size: 14px;
+  line-height: 20px;
 }
 
 .form-footer {
@@ -291,8 +285,9 @@ body {
 }
 
 .form-footer > span {
-  color: var(--muted, #75636f);
-  font-size: 13px;
+  color: var(--muted, #535862);
+  font-size: 14px;
+  line-height: 20px;
 }
 .form-actions {
   display: flex;
@@ -303,15 +298,16 @@ body {
 
 .button {
   display: inline-flex;
-  min-height: 48px;
+  min-height: 44px;
   align-items: center;
   justify-content: center;
   gap: 9px;
   padding: 0 19px;
   border: 1px solid transparent;
-  border-radius: 11px;
+  border-radius: 8px;
   font: inherit;
-  font-size: 15px;
+  font-size: 16px;
+  line-height: 24px;
   font-weight: 750;
   text-align: center;
   text-decoration: none;
@@ -326,24 +322,23 @@ body {
 .button-primary {
   color: #fff;
   background: var(--brand-pink, #f04494);
-  box-shadow: 0 5px 13px rgba(206, 36, 111, 0.2);
+  box-shadow: var(--shadow-xs, 0 1px 2px rgb(10 13 18 / 5%));
 }
 .button-primary:hover:not(:disabled) {
   background: var(--brand-pink-strong, #ce246f);
-  box-shadow: 0 8px 18px rgba(206, 36, 111, 0.24);
   transform: translateY(-1px);
 }
 .button-primary:active:not(:disabled) {
   transform: translateY(0);
 }
 .button-secondary {
-  border-color: var(--line, #eedfe7);
+  border-color: var(--line, #e9eaeb);
   background: #fff;
-  color: #624b59;
+  color: #414651;
 }
 .button-secondary:hover:not(:disabled) {
-  background: #fff7fb;
-  border-color: #dfbfd0;
+  background: #f8f9fa;
+  border-color: #d5d7da;
 }
 .button-quiet {
   min-height: 44px;
@@ -352,7 +347,7 @@ body {
   background: transparent;
 }
 .button-quiet:hover {
-  background: #fff3f8;
+  background: #fff5f9;
 }
 .button:disabled {
   opacity: 0.65;
@@ -362,12 +357,12 @@ body {
 .portal-error {
   margin: 0 0 18px;
   padding: 13px 15px;
-  border: 1px solid #f1c5d4;
-  border-radius: 11px;
-  background: #fff4f7;
+  border: 1px solid #fecdca;
+  border-radius: 8px;
+  background: #fff3f2;
   color: #923957;
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 20px;
 }
 
 .request-form > .portal-error {
@@ -384,7 +379,7 @@ body {
   background: #fff9ef;
   color: #705334;
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 20px;
 }
 .short-notice svg {
   flex: 0 0 auto;
@@ -396,10 +391,10 @@ body {
 }
 
 .aired-dates-block {
-  padding: 16px;
-  border: 1px solid var(--line, #eedfe7);
-  border-radius: 13px;
-  background: #fffafd;
+  padding: 12px;
+  border: 1px solid var(--line, #e9eaeb);
+  border-radius: 8px;
+  background: #fff;
 }
 .aired-heading {
   display: flex;
@@ -414,21 +409,22 @@ body {
   gap: 4px;
 }
 .aired-heading strong {
-  color: var(--ink, #302433);
+  color: var(--ink, #181d27);
   font-size: 14px;
+  line-height: 20px;
 }
 .aired-heading span:not(.required-pill) {
-  color: var(--muted, #75636f);
-  font-size: 13px;
-  line-height: 1.45;
+  color: var(--muted, #535862);
+  font-size: 14px;
+  line-height: 20px;
 }
 .required-pill {
   flex: 0 0 auto;
   padding: 5px 9px;
-  border-radius: 999px;
+  border-radius: 8px;
   background: #ffe9f2;
   color: #a32b5e;
-  font-size: 13px;
+  font-size: var(--text-sm, 14px);
   line-height: 1.2;
   font-weight: 800;
 }
@@ -446,7 +442,7 @@ body {
   min-width: 46px;
   min-height: 46px;
   place-items: center;
-  border: 1px solid var(--line, #eedfe7);
+  border: 1px solid var(--line, #e9eaeb);
   border-radius: 11px;
   background: white;
   color: #9f486d;
@@ -493,13 +489,13 @@ body {
 }
 
 .track-content {
-  margin-top: 30px;
+  margin-top: 24px;
 }
 .tracking-summary {
-  padding: 22px;
-  border: 1px solid var(--line, #eedfe7);
-  border-radius: 15px;
-  background: #fffafd;
+  padding: 16px;
+  border: 1px solid var(--line, #e9eaeb);
+  border-radius: 12px;
+  background: #fff;
 }
 .tracking-summary-top {
   display: flex;
@@ -510,17 +506,18 @@ body {
 .tracking-summary h3,
 .edit-heading h3 {
   margin: 6px 0 0;
-  color: var(--ink, #302433);
-  font-family: var(--font-display, "Space Grotesk Variable"), sans-serif;
-  font-size: 22px;
-  font-weight: 650;
-  line-height: 1.25;
-  letter-spacing: -0.03em;
+  color: var(--ink, #181d27);
+  font-family: var(--font-display, var(--font-body));
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 30px;
+  letter-spacing: -0.02em;
   overflow-wrap: anywhere;
 }
 .section-eyebrow {
-  font-size: 13px;
-  letter-spacing: 0.09em;
+  font-size: 14px;
+  line-height: 20px;
+  letter-spacing: 0.06em;
 }
 .status-badge {
   display: inline-flex;
@@ -528,8 +525,9 @@ body {
   align-items: center;
   flex: 0 0 auto;
   padding: 5px 11px;
-  border-radius: 999px;
-  font-size: 13px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 20px;
   font-weight: 800;
 }
 .status-pending {
@@ -549,9 +547,9 @@ body {
   flex-wrap: wrap;
   gap: 8px 18px;
   margin-top: 12px;
-  color: var(--muted, #75636f);
+  color: var(--muted, #535862);
   font-size: 14px;
-  line-height: 1.45;
+  line-height: 20px;
 }
 .tracking-meta span + span::before {
   content: "·";
@@ -563,17 +561,18 @@ body {
   justify-content: space-between;
   gap: 12px;
   margin: 20px 0 8px;
-  color: var(--muted, #75636f);
+  color: var(--muted, #535862);
   font-size: 14px;
+  line-height: 20px;
 }
 .progress-meta strong {
-  color: var(--ink, #302433);
+  color: var(--ink, #181d27);
 }
 .progress-track {
   height: 8px;
   overflow: hidden;
   border-radius: 999px;
-  background: #f2e4eb;
+  background: #e9eaeb;
 }
 .progress-track span {
   display: block;
@@ -588,11 +587,12 @@ body {
   gap: 12px;
   margin-top: 14px;
   padding-top: 13px;
-  border-top: 1px solid var(--line, #eedfe7);
+  border-top: 1px solid var(--line, #e9eaeb);
 }
 .result-assignment span {
-  color: var(--muted, #75636f);
-  font-size: 13px;
+  color: var(--muted, #535862);
+  font-size: 14px;
+  line-height: 20px;
   font-weight: 800;
   letter-spacing: 0.07em;
 }
@@ -605,7 +605,7 @@ body {
 .rejection-box {
   margin-top: 18px;
   padding: 14px 16px;
-  border-radius: 11px;
+  border-radius: 8px;
   background: #fff1f4;
   color: #8e3d53;
 }
@@ -615,30 +615,32 @@ body {
 .rejection-box p {
   margin: 5px 0 0;
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 20px;
   white-space: pre-wrap;
 }
 .completed-note {
   margin: 14px 0 0;
-  color: var(--muted, #75636f);
-  font-size: 13px;
+  color: var(--muted, #535862);
+  font-size: 14px;
+  line-height: 20px;
 }
 
 .edit-section {
-  margin-top: 28px;
-  padding-top: 25px;
-  border-top: 1px solid var(--line, #eedfe7);
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line, #e9eaeb);
 }
 .edit-heading {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 23px;
+  margin-bottom: 18px;
 }
 .edit-heading h3 {
   margin-top: 5px;
-  font-size: 24px;
+  font-size: 20px;
+  line-height: 30px;
 }
 .edit-saved {
   display: flex;
@@ -652,35 +654,37 @@ body {
 .closed-request {
   margin-top: 26px;
   padding-top: 20px;
-  border-top: 1px solid var(--line, #eedfe7);
+  border-top: 1px solid var(--line, #e9eaeb);
 }
 .closed-request > p {
   margin: 0 0 16px;
-  color: var(--muted, #75636f);
+  color: var(--muted, #535862);
   font-size: 14px;
+  line-height: 20px;
 }
 .request-details {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 18px 24px;
+  gap: 16px 20px;
   margin: 0;
-  padding: 20px 0 0;
-  border-top: 1px solid var(--line, #eedfe7);
+  padding: 16px 0 0;
+  border-top: 1px solid var(--line, #e9eaeb);
 }
 .request-details div {
   min-width: 0;
 }
 .request-details dt {
   margin-bottom: 5px;
-  color: var(--muted, #75636f);
-  font-size: 13px;
+  color: var(--muted, #535862);
+  font-size: 14px;
+  line-height: 20px;
   font-weight: 700;
 }
 .request-details dd {
   margin: 0;
-  color: var(--ink, #302433);
-  font-size: 15px;
-  line-height: 1.55;
+  color: var(--ink, #181d27);
+  font-size: 16px;
+  line-height: 24px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -689,15 +693,15 @@ body {
 }
 
 .request-success {
-  padding: 27px 0 4px;
+  padding: 10px 0 2px;
   text-align: center;
 }
 .success-mark {
   display: grid;
-  width: 54px;
-  height: 54px;
+  width: 44px;
+  height: 44px;
   place-items: center;
-  margin: 0 auto 16px;
+  margin: 0 auto 12px;
   border-radius: 50%;
   background: #e8f8ef;
   color: #268254;
@@ -705,37 +709,38 @@ body {
 .success-eyebrow {
   margin: 0 0 7px;
   color: #268254;
-  font-size: 13px;
-  line-height: 1.4;
+  font-size: 14px;
+  line-height: 20px;
   font-weight: 800;
   letter-spacing: 0.11em;
 }
 .request-success h2 {
-  font-size: 32px;
+  font-size: 24px;
+  line-height: 32px;
 }
 .success-copy {
   max-width: 480px;
-  margin: 9px auto 22px;
-  color: var(--muted, #75636f);
-  font-size: 15px;
-  line-height: 1.55;
+  margin: 8px auto 16px;
+  color: var(--muted, #535862);
+  font-size: 16px;
+  line-height: 24px;
 }
 .access-code-wrap {
   width: min(100%, 500px);
-  margin: 0 auto 23px;
-  padding: 17px;
-  border: 1px solid #efcedd;
-  border-radius: 15px;
-  background: #fff7fb;
+  margin: 0 auto 16px;
+  padding: 12px;
+  border: 1px solid var(--line, #e9eaeb);
+  border-radius: 8px;
+  background: #fff;
   text-align: left;
 }
 .access-code-label {
   display: flex;
   align-items: center;
   gap: 7px;
-  color: #75556a;
-  font-size: 13px;
-  line-height: 1.4;
+  color: var(--muted, #535862);
+  font-size: 14px;
+  line-height: 20px;
   font-weight: 800;
 }
 .access-code-label svg {
@@ -766,8 +771,8 @@ body {
   justify-content: center;
   gap: 7px;
   padding: 0 11px;
-  border: 1px solid #edc4d6;
-  border-radius: 10px;
+  border: 1px solid var(--line, #e9eaeb);
+  border-radius: 8px;
   background: #fff;
   color: var(--brand-pink-strong, #ce246f);
   font: inherit;
@@ -776,14 +781,14 @@ body {
   cursor: pointer;
 }
 .copy-button:hover {
-  background: #fff0f7;
+  background: #f8f9fa;
 }
 .code-safety {
   display: block;
   margin-top: 8px;
-  color: var(--muted, #75636f);
-  font-size: 13px;
-  line-height: 1.45;
+  color: var(--muted, #535862);
+  font-size: 14px;
+  line-height: 20px;
 }
 .success-actions {
   display: flex;
@@ -793,35 +798,17 @@ body {
   gap: 8px;
 }
 
-.portal-card-note {
-  display: flex;
-  min-height: 48px;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 10px 18px;
-  border-top: 1px solid var(--line, #eedfe7);
-  background: #fffafd;
-  color: var(--muted, #75636f);
-  font-size: 13px;
-  line-height: 1.4;
-  text-align: center;
-}
-.portal-card-note svg {
-  flex: 0 0 auto;
-  color: var(--brand-pink-strong, #ce246f);
-}
 .file-share-note {
-  margin: -3px 0 -7px;
-  color: var(--muted, #75636f);
-  font-size: 13px;
-  line-height: 1.5;
+  margin: -2px 0 -4px;
+  color: var(--muted, #535862);
+  font-size: 14px;
+  line-height: 20px;
 }
 .portal-footer {
   padding: 0 20px 28px;
-  color: #917e89;
-  font-size: 13px;
-  line-height: 1.5;
+  color: var(--muted, #535862);
+  font-size: 14px;
+  line-height: 20px;
   text-align: center;
 }
 .sr-only {
@@ -843,20 +830,20 @@ body {
   }
   .portal-main {
     width: calc(100% - 28px);
-    padding-top: 34px;
-    padding-bottom: 40px;
+    padding-top: 24px;
+    padding-bottom: 32px;
   }
   .portal-intro {
-    margin-bottom: 24px;
+    margin-bottom: 16px;
   }
   .portal-intro h1 {
-    margin-top: 10px;
+    margin-top: 0;
   }
   .portal-intro > p:last-child {
     font-size: 15px;
   }
   .portal-card {
-    border-radius: 17px;
+    border-radius: 12px;
   }
   .portal-tabs {
     min-height: 62px;
@@ -868,10 +855,10 @@ body {
     font-size: 14px;
   }
   .portal-panel {
-    padding: 23px 18px 28px;
+    padding: 20px 18px 24px;
   }
   .panel-heading {
-    margin-bottom: 21px;
+    margin-bottom: 16px;
   }
   .request-form {
     gap: 18px;

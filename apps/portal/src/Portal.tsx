@@ -433,12 +433,8 @@ export default function Portal() {
       </header>
       <main className="portal-main">
         <section className="portal-intro" aria-labelledby="portal-title">
-          <p className="portal-eyebrow">MOC · MINISTRY SERVICES</p>
-          <h1 id="portal-title">A little help. A big difference.</h1>
-          <p>
-            Request creative support for your ministry, or check in on a request
-            you’ve already made.
-          </p>
+          <h1 id="portal-title">Ministry requests</h1>
+          <p>Request creative support or check your progress.</p>
         </section>
 
         <section className="portal-card" aria-label="Request and tracking">
@@ -465,8 +461,8 @@ export default function Portal() {
                   <p className="success-eyebrow">REQUEST SENT</p>
                   <h2>We’ve got it.</h2>
                   <p className="success-copy">
-                    Save this private code to check your request or make changes
-                    while it’s pending.
+                    Your request is in. Save this code to check in or edit while
+                    it’s pending.
                   </p>
                   {formError && (
                     <div className="portal-error" role="alert">
@@ -475,7 +471,7 @@ export default function Portal() {
                   )}
                   <div className="access-code-wrap">
                     <span className="access-code-label">
-                      <LockKeyhole size={15} /> Your private access code
+                      <LockKeyhole size={15} /> Your access code
                     </span>
                     <div className="access-code-row">
                       <code className="access-code">
@@ -515,7 +511,7 @@ export default function Portal() {
               ) : (
                 <>
                   <div className="panel-heading">
-                    <h2>What do you need?</h2>
+                    <h2>Request details</h2>
                   </div>
                   <RequestForm
                     form={createForm}
@@ -539,9 +535,7 @@ export default function Portal() {
             <Tabs.Panel value="track" className="portal-panel">
               <div className="panel-heading">
                 <h2>Find your request</h2>
-                <p>
-                  Enter the private access code you received after submitting.
-                </p>
+                <p>Enter the access code you saved when submitting.</p>
               </div>
               {trackError && (
                 <div className="portal-error" role="alert">
@@ -549,11 +543,7 @@ export default function Portal() {
                 </div>
               )}
               <form className="track-form" onSubmit={trackRequest}>
-                <Field
-                  label="Private access code"
-                  required
-                  hint="Your code is private. Anyone with it can view or edit the request."
-                >
+                <Field label="Private access code" required>
                   <input
                     className="portal-input code-input"
                     required
@@ -592,7 +582,6 @@ export default function Portal() {
                     <div className="edit-section">
                       <div className="edit-heading">
                         <div>
-                          <p className="section-eyebrow">PENDING REQUEST</p>
                           <h3>Make changes</h3>
                         </div>
                         <span className="edit-available">
@@ -639,10 +628,6 @@ export default function Portal() {
               )}
             </Tabs.Panel>
           </Tabs.Root>
-          <div className="portal-card-note">
-            <LockKeyhole size={15} /> No account needed. Keep your access code
-            somewhere safe.
-          </div>
         </section>
       </main>
       <footer className="portal-footer">
@@ -853,7 +838,6 @@ function TrackingSummary({ result }: { result: PublicTracking }) {
     <section className="tracking-summary">
       <div className="tracking-summary-top">
         <div>
-          <p className="section-eyebrow">REQUEST STATUS</p>
           <h3>{request.title}</h3>
         </div>
         <span

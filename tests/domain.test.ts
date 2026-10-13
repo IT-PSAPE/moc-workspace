@@ -281,9 +281,11 @@ describe("shared domain model", () => {
       taskId: "task-demo-cell0-01",
       privateNotes: [{ text: "forged private note" }],
       rejectionReason: "forged",
+      trackingCodeHash: "attacker-controlled-digest",
     });
     const { state, request } = createRequest(createSeedState(), injected);
     expect(request).not.toHaveProperty("privateNotes");
+    expect(request).not.toHaveProperty("trackingCodeHash");
     expect(request.taskId).toBeUndefined();
     expect(request.id).not.toBe("forged-request-id");
     expect(request.reference).not.toBe("MOC-2099-9999");
@@ -517,7 +519,16 @@ describe("shared domain model", () => {
   });
 
   it("allows a public edit only while pending and preserves the MOC reference", () => {
-    const { state, request } = createRequest(createSeedState(), freshInput());
+    const base = createRequest(createSeedState(), freshInput());
+    const state = {
+      ...base.state,
+      requests: base.state.requests.map((item) =>
+        item.id === base.request.id
+          ? { ...item, trackingCodeHash: "a".repeat(64) }
+          : item,
+      ),
+    };
+    const request = state.requests.find((item) => item.id === base.request.id)!;
     const original = request;
     const injected = Object.assign(
       freshInput({ title: "Updated youth reel" }),
@@ -543,10 +554,15 @@ describe("shared domain model", () => {
     expect(edited.request.title).toBe("Updated youth reel");
     expect(edited.request.status).toBe("pending");
     expect(edited.request.taskId).toBeUndefined();
+    expect(edited.request.trackingCodeHash).toBe("a".repeat(64));
     expect(edited.request).not.toHaveProperty("privateNotes");
     expect(
       publicProjection(edited.state, request.reference, request.ministry)?.task,
     ).toBeNull();
+    expect(
+      publicProjection(edited.state, request.reference, request.ministry)
+        ?.request,
+    ).not.toHaveProperty("trackingCodeHash");
     expect(edited.state.activities.at(-1)?.text).toContain("was edited");
     expect(edited.state.notifications.at(-1)?.text).toContain("was updated");
     const cell0 = edited.state.users.find(

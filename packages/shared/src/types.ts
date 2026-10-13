@@ -35,6 +35,8 @@ export interface MinistryRequest extends RequestInput {
   updatedAt: string;
   rejectionReason?: string;
   taskId?: string;
+  /** SHA-256 digest of the issued public tracking credential. */
+  trackingCodeHash?: string;
 }
 export interface Task {
   id: string;
@@ -101,11 +103,16 @@ export interface Service {
   requiresAiredDates?: boolean;
 }
 export interface PublicTracking {
-  request: MinistryRequest;
+  request: PublicRequest;
   task: Pick<
     Task,
     "status" | "progress" | "department" | "subTeam" | "completedAt"
   > | null;
+}
+export type PublicRequest = Omit<MinistryRequest, "trackingCodeHash">;
+export interface SubmissionReceipt {
+  request: PublicRequest;
+  trackingCode: string;
 }
 export interface InternalTaskInput {
   title: string;

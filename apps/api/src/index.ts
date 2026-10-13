@@ -2,22 +2,30 @@ import "dotenv/config";
 import { cors } from "hono/cors";
 import { Hono } from "hono";
 import type { Context, MiddlewareHandler } from "hono";
+import { getConnInfo } from "@hono/node-server/conninfo";
 import { fileURLToPath } from "node:url";
 import {
   applyAction,
   createRequest,
   MINISTRIES,
   publicProjection,
+  publicRequest,
   SERVICES,
   updatePublicRequest,
   validateWorkspaceAction,
   type Department,
   type Session,
+  type SubmissionReceipt,
   type WorkspaceAction,
   type WorkspaceState,
 } from "@moc/shared";
 import { createAuthRouter, getSession } from "./auth";
 import { JsonRepository, type Repository } from "./repository";
+import {
+  createTrackingCode,
+  findRequestByTrackingCode,
+  hashTrackingCode,
+} from "./tracking";
 
 const allowedOrigins = new Set<string>(
   (
@@ -37,8 +45,15 @@ const dataPath =
   process.env.API_LOCAL_DATA_PATH ??
   fileURLToPath(new URL("../data/state.json", import.meta.url));
 
+interface ApiOptions {
+  /** Override only for an adapter that supplies a verified transport identity. */
+  resolveRemoteAddress?: (context: Context) => string | undefined;
+  maxCredentialBuckets?: number;
+}
+
 export function createApiApp(
   repository: Repository = new JsonRepository(dataPath),
+  options: ApiOptions = {},
 ): Hono {
   const app = new Hono();
 
@@ -74,6 +89,41 @@ export function createApiApp(
     await next();
   };
   app.use("/api/*", bodyLimit);
+
+  const credentialAttempts = new Map<string, number[]>();
+  const resolveRemoteAddress =
+    options.resolveRemoteAddress ??
+    ((context) => {
+      try {
+        return getConnInfo(context).remote.address;
+      } catch {
+        return undefined;
+      }
+    });
+  const requestedBucketLimit = options.maxCredentialBuckets;
+  const maxCredentialBuckets = Number.isSafeInteger(requestedBucketLimit)
+    ? Math.max(1, Math.min(10_000, requestedBucketLimit!))
+    : 2_000;
+  app.use("/api/track", async (c, next) => {
+    if (c.req.method !== "POST") return next();
+    return limitCredentialAttempts(
+      c,
+      next,
+      credentialAttempts,
+      resolveRemoteAddress(c),
+      maxCredentialBuckets,
+    );
+  });
+  app.use("/api/requests", async (c, next) => {
+    if (c.req.method !== "PATCH") return next();
+    return limitCredentialAttempts(
+      c,
+      next,
+      credentialAttempts,
+      resolveRemoteAddress(c),
+      maxCredentialBuckets,
+    );
+  });
 
   app.onError((error, c) => {
     console.error(
@@ -224,12 +274,23 @@ export function createApiApp(
     const input: unknown = await c.req.json().catch(() => null);
     if (!isRequestInput(input))
       return c.json({ error: "A valid request is required." }, 400);
+    const trackingCode = createTrackingCode();
     let request: WorkspaceState["requests"][number] | undefined;
     try {
       await repository.update((state) => {
         const created = createRequest(state, input);
-        request = created.request;
-        return created.state;
+        request = {
+          ...created.request,
+          trackingCodeHash: hashTrackingCode(
+            trackingCode.replace(/[\s-]/g, "").toUpperCase(),
+          ),
+        };
+        return {
+          ...created.state,
+          requests: created.state.requests.map((item) =>
+            item.id === request!.id ? request! : item,
+          ),
+        };
       });
     } catch (error) {
       return c.json(
@@ -248,59 +309,59 @@ export function createApiApp(
       `New request ${request.reference} from ${request.ministry}: ${request.title}`,
       ["cell-0"],
     );
-    return c.json(request, 201);
+    const receipt = {
+      request: publicRequest(request),
+      trackingCode,
+    } satisfies SubmissionReceipt;
+    return c.json(receipt, 201);
   });
 
   app.post("/api/track", async (c) => {
     const body: unknown = await c.req.json().catch(() => null);
-    if (
-      !isRecord(body) ||
-      typeof body.reference !== "string" ||
-      typeof body.ministry !== "string"
-    ) {
-      return c.json(
-        { error: "A request reference and ministry are required." },
-        400,
-      );
-    }
+    if (!isRecord(body) || typeof body.code !== "string")
+      return c.json({ error: "Request was not found." }, 404);
+    const state = await repository.read();
+    const request = findRequestByTrackingCode(state, body.code);
+    if (!request) return c.json({ error: "Request was not found." }, 404);
     const tracking = publicProjection(
-      await repository.read(),
-      body.reference.trim(),
-      body.ministry.trim(),
+      state,
+      request.reference,
+      request.ministry,
     );
-    if (!tracking)
-      return c.json(
-        { error: "No request matched that reference and ministry." },
-        404,
-      );
+    if (!tracking) return c.json({ error: "Request was not found." }, 404);
     return c.json(tracking);
   });
 
-  app.patch("/api/requests/:reference", async (c) => {
+  app.patch("/api/requests", async (c) => {
     const body: unknown = await c.req.json().catch(() => null);
     if (
       !isRecord(body) ||
-      typeof body.ministry !== "string" ||
+      typeof body.code !== "string" ||
       !isRequestInput(body.input)
     ) {
-      return c.json(
-        { error: "A ministry and valid request details are required." },
-        400,
-      );
+      return c.json({ error: "Request was not found." }, 404);
     }
-    const reference = c.req.param("reference");
+    const state = await repository.read();
+    const existing = findRequestByTrackingCode(state, body.code);
+    if (!existing || existing.status !== "pending")
+      return c.json({ error: "Request was not found." }, 404);
     let result: ReturnType<typeof updatePublicRequest> | undefined;
     try {
       await repository.update((state) => {
+        const current = findRequestByTrackingCode(state, body.code);
+        if (!current || current.status !== "pending")
+          throw new Error("Request was not found.");
         result = updatePublicRequest(
           state,
-          reference,
-          body.ministry as string,
+          current.reference,
+          current.ministry,
           body.input as Parameters<typeof createRequest>[1],
         );
         return result.state;
       });
     } catch (error) {
+      if (error instanceof Error && error.message === "Request was not found.")
+        return c.json({ error: "Request was not found." }, 404);
       return c.json(
         {
           error:
@@ -317,7 +378,7 @@ export function createApiApp(
       `Request ${result.request.reference} was edited by ${result.request.ministry}: ${result.request.title}`,
       ["cell-0"],
     );
-    return c.json(result.request);
+    return c.json(publicRequest(result.request));
   });
 
   return app;
@@ -327,6 +388,34 @@ function isApproved(
   session: Session,
 ): session is Session & { user: NonNullable<Session["user"]> } {
   return session.user !== null && session.user.approved;
+}
+
+function limitCredentialAttempts(
+  c: Context,
+  next: () => Promise<void>,
+  buckets: Map<string, number[]>,
+  remoteAddress: string | undefined,
+  maxBuckets: number,
+): Promise<Response | void> {
+  const now = Date.now();
+  const ip = remoteAddress || "unknown";
+  const attempts = (buckets.get(ip) ?? []).filter((at) => now - at < 60_000);
+  buckets.delete(ip);
+  if (attempts.length >= 20) {
+    buckets.set(ip, attempts);
+    return Promise.resolve(c.json({ error: "Request was not found." }, 429));
+  }
+  attempts.push(now);
+  if (!buckets.has(ip) && buckets.size >= maxBuckets) {
+    for (const [key, values] of buckets)
+      if (values.every((at) => now - at >= 60_000)) buckets.delete(key);
+    if (buckets.size >= maxBuckets) {
+      const oldest = buckets.keys().next().value as string | undefined;
+      if (oldest !== undefined) buckets.delete(oldest);
+    }
+  }
+  buckets.set(ip, attempts);
+  return next();
 }
 
 function unauthorized(c: Context) {
@@ -346,7 +435,11 @@ function projectWorkspace(
   state: WorkspaceState,
   user: NonNullable<Session["user"]>,
 ): WorkspaceState {
-  if (user.department === "cell-0") return state;
+  if (user.department === "cell-0")
+    return {
+      ...state,
+      requests: state.requests.map(publicRequest),
+    };
   const publicTasks = state.tasks.filter(
     (task) => task.department !== "cell-0",
   );
@@ -362,11 +455,13 @@ function projectWorkspace(
         ? task
         : { ...task, privateNotes: [] },
     ),
-    requests: state.requests.filter(
-      (request) =>
-        (request.taskId !== undefined && taskIds.has(request.taskId)) ||
-        requestIds.has(request.id),
-    ),
+    requests: state.requests
+      .filter(
+        (request) =>
+          (request.taskId !== undefined && taskIds.has(request.taskId)) ||
+          requestIds.has(request.id),
+      )
+      .map(publicRequest),
     users: state.users.filter((leader) => leader.id === user.id),
     activities: state.activities.filter(
       (activity) => activity.department === user.department,

@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createSeedState, type Leader, type WorkspaceState } from "@moc/shared";
+import { DEMO_TRACKING_CODES, hashTrackingCode } from "./tracking";
 
 export interface Repository {
   read(): Promise<WorkspaceState>;
@@ -12,7 +13,23 @@ export interface Repository {
   getDemoLeaderByDepartment(department: Leader["department"]): Leader | null;
 }
 
-const initialState = (): WorkspaceState => createSeedState();
+const initialState = (): WorkspaceState => {
+  const state = createSeedState();
+  return {
+    ...state,
+    requests: state.requests.map((request, index) => {
+      const code = DEMO_TRACKING_CODES[index];
+      return code
+        ? {
+            ...request,
+            trackingCodeHash: hashTrackingCode(
+              code.replace(/[\s-]/g, "").toUpperCase(),
+            ),
+          }
+        : request;
+    }),
+  };
+};
 
 function parseState(source: string): WorkspaceState {
   const value: unknown = JSON.parse(source);

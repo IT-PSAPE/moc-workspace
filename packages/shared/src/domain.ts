@@ -5,6 +5,7 @@ import type {
   Leader,
   MinistryRequest,
   PublicTracking,
+  PublicRequest,
   RequestInput,
   Task,
   WorkspaceAction,
@@ -368,6 +369,9 @@ export function updatePublicRequest(
     status: existing.status,
     createdAt: existing.createdAt,
     updatedAt: nowIso(),
+    ...(existing.trackingCodeHash
+      ? { trackingCodeHash: existing.trackingCodeHash }
+      : {}),
   };
   const text = `Request ${request.reference} was edited by ${request.ministry}.`;
   return {
@@ -401,7 +405,7 @@ export function publicProjection(
     : undefined;
   return {
     request: {
-      ...request,
+      ...publicRequest(request),
       airedDates: request.airedDates ? [...request.airedDates] : undefined,
     },
     task: task
@@ -414,6 +418,12 @@ export function publicProjection(
         }
       : null,
   };
+}
+
+/** Remove the credential digest before any request crosses a public boundary. */
+export function publicRequest(request: MinistryRequest): PublicRequest {
+  const { trackingCodeHash: _trackingCodeHash, ...safeRequest } = request;
+  return safeRequest;
 }
 
 function makeRequestTask(

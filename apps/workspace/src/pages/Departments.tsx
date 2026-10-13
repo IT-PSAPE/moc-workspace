@@ -16,6 +16,7 @@ import {
 } from "@moc/shared";
 import { useWorkspace } from "@moc/client";
 import { Badge, Button } from "@moc/ui";
+import "./workflows.css";
 
 const labels: Record<string, string> = {
   pending: "Not started",
@@ -125,15 +126,7 @@ export default function Departments() {
       )}
       <div className="page-heading">
         <div>
-          <div className="eyebrow">
-            MOC WORKSPACE <span>·</span> TEAMS
-          </div>
           <h1>{selected ? selected.name : "Departments"}</h1>
-          <p>
-            {selected
-              ? `A shared view of the ${selected.name.toLowerCase()} team's active work.`
-              : "A clear view of the people and projects that keep ministry moving."}
-          </p>
         </div>
         {user?.department === "cell-0" && (
           <Button
@@ -179,7 +172,9 @@ export default function Departments() {
                   <ArrowRight size={17} />
                 </div>
                 <h2>{department.name}</h2>
-                <p>{department.groups.join(" · ")}</p>
+                {department.groups.some(
+                  (group) => group !== department.name,
+                ) && <p>{department.groups.join(" · ")}</p>}
                 <div className="overview-metrics">
                   <span>
                     <strong>{active}</strong> active
@@ -202,9 +197,6 @@ export default function Departments() {
       <section className="task-board">
         <div className="task-board-head">
           <div>
-            <div className="eyebrow">
-              {selected ? selected.name.toUpperCase() : "ALL TEAMS"}
-            </div>
             <h2>{selected ? "Team tasks" : "Task overview"}</h2>
           </div>
           <div className="task-filters">

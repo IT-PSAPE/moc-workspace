@@ -35,7 +35,7 @@ const fmtDate = (value: string) =>
   }).format(new Date(value));
 
 export default function RequestsPage() {
-  const { state, user, demo, loading, error, act, refresh } = useWorkspace();
+  const { state, user, loading, error, act, refresh } = useWorkspace();
   const isCell0 = user?.approved && user.department === "cell-0";
   const [filter, setFilter] = useState("pending");
   const [search, setSearch] = useState("");
@@ -128,25 +128,8 @@ export default function RequestsPage() {
   return (
     <div className="workspace-page workflow-page">
       <div className="page-header workflow-header">
-        <div>
-          <div className="eyebrow">Workspace / Operations</div>
-          <div className="page-heading">
-            <div>
-              <h1>Requests</h1>
-              <p>
-                Review ministry requests and route approved work to the right
-                team.
-              </p>
-            </div>
-            <Badge tone={demo ? "gold" : "green"}>
-              {demo ? "Demo workspace" : "Live workspace"}
-            </Badge>
-          </div>
-        </div>
-        <div className="requests-summary">
-          <span>
-            <strong>{count("pending")}</strong> waiting for review
-          </span>
+        <div className="page-heading">
+          <h1>Requests</h1>
         </div>
       </div>
       <div className="request-tabs" role="tablist" aria-label="Filter requests">

@@ -16,7 +16,7 @@ const escapeCsv = (value: unknown) => {
 };
 
 export default function ReportsPage() {
-  const { state, user, demo, loading, error } = useWorkspace();
+  const { state, user, loading, error } = useWorkspace();
   const [month, setMonth] = useState(
     () => new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   );
@@ -138,45 +138,30 @@ export default function ReportsPage() {
   return (
     <div className="workspace-page workflow-page">
       <div className="page-header workflow-header">
-        <div>
-          <div className="eyebrow">Workspace / Insights</div>
-          <div className="page-heading">
-            <div>
-              <h1>Reports</h1>
-              <p>
-                Monthly request and delivery performance across the workspace.
-              </p>
-            </div>
-            <Badge tone={demo ? "gold" : "green"}>
-              {demo ? "Demo workspace" : "Live workspace"}
-            </Badge>
+        <div className="page-heading">
+          <h1>Reports</h1>
+        </div>
+        <div className="report-header-actions">
+          <div className="report-month-controls">
+            <button
+              aria-label="Previous month"
+              onClick={() => setMonth((value) => shiftMonth(value, -1))}
+            >
+              ‹
+            </button>
+            <strong>{monthLabel}</strong>
+            <button
+              aria-label="Next month"
+              onClick={() => setMonth((value) => shiftMonth(value, 1))}
+            >
+              ›
+            </button>
           </div>
-        </div>
-        <button
-          className="button button-secondary button-md report-export"
-          onClick={exportCsv}
-        >
-          <Download size={16} /> Export CSV
-        </button>
-      </div>
-      <div className="report-period-bar">
-        <div>
-          <FileBarChart2 size={18} />
-          <span>Monthly report</span>
-        </div>
-        <div className="report-month-controls">
           <button
-            aria-label="Previous month"
-            onClick={() => setMonth((value) => shiftMonth(value, -1))}
+            className="button button-secondary button-md report-export"
+            onClick={exportCsv}
           >
-            ‹
-          </button>
-          <strong>{monthLabel}</strong>
-          <button
-            aria-label="Next month"
-            onClick={() => setMonth((value) => shiftMonth(value, 1))}
-          >
-            ›
+            <Download size={16} /> Export CSV
           </button>
         </div>
       </div>
@@ -231,10 +216,6 @@ export default function ReportsPage() {
         <div className="report-detail-heading">
           <div>
             <h2>Delivery activity</h2>
-            <p>
-              Tasks connected to the selected month by creation, due date or
-              completion.
-            </p>
           </div>
           <Badge>{monthTasks.length} tasks</Badge>
         </div>

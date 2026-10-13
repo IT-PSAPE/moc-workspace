@@ -42,21 +42,6 @@ const priorityTone: Record<Priority, "neutral" | "gold" | "red" | "green"> = {
   urgent: "red",
 };
 const progressSteps: Progress[] = [0, 25, 50, 75, 100];
-const departmentQuotes: Record<DepartmentId, { line: string; note: string }> = {
-  "cell-0": { line: "Clarity makes room for good work.", note: "CELL 0" },
-  sound: {
-    line: "When every voice is heard, the whole room can join in.",
-    note: "SOUND",
-  },
-  "visual-media": {
-    line: "A moment well captured can keep telling its story.",
-    note: "VISUAL MEDIA",
-  },
-  design: {
-    line: "Thoughtful details help a shared message find its shape.",
-    note: "DESIGN",
-  },
-};
 const dateLabel = (value: string) =>
   new Intl.DateTimeFormat("en-ZA", {
     day: "numeric",
@@ -73,7 +58,7 @@ export default function DepartmentPage({
 }: {
   department: DepartmentId;
 }) {
-  const { state, user, demo, loading, error, act, refresh } = useWorkspace();
+  const { state, user, loading, error, act, refresh } = useWorkspace();
   const departmentInfo = DEPARTMENTS.find((item) => item.id === department)!;
   const isCell0 = user?.department === "cell-0";
   const canEdit = Boolean(
@@ -215,23 +200,10 @@ export default function DepartmentPage({
     );
 
   return (
-    <div
-      className={"workspace-page workflow-page department-tone-" + department}
-    >
+    <div className="workspace-page workflow-page">
       <div className="page-header workflow-header">
-        <div>
-          <div className="eyebrow">Workspace / Departments</div>
-          <div className="page-heading">
-            <div>
-              <h1>{departmentInfo.name}</h1>
-              <p>
-                Keep the team’s work moving, from first brief to final delivery.
-              </p>
-            </div>
-            <Badge tone={demo ? "gold" : "green"}>
-              {demo ? "Demo workspace" : "Live workspace"}
-            </Badge>
-          </div>
+        <div className="page-heading">
+          <h1>{departmentInfo.name}</h1>
         </div>
         {isCell0 && (
           <Button
@@ -245,11 +217,6 @@ export default function DepartmentPage({
           </Button>
         )}
       </div>
-      <aside className={"department-quote department-quote-" + department}>
-        <span>{departmentQuotes[department].note}</span>
-        <p>“{departmentQuotes[department].line}”</p>
-      </aside>
-
       <div className="workflow-toolbar">
         <div className="workflow-search">
           <Search size={17} />
@@ -380,10 +347,17 @@ export default function DepartmentPage({
                         </span>
                       </div>
                       <h3>{task.title}</h3>
-                      <p className="task-card-service">{taskService(task)}</p>
+                      {taskService(task).toLowerCase() !==
+                        task.subTeam.toLowerCase() && (
+                        <p className="task-card-service">{taskService(task)}</p>
+                      )}
                       <div className="task-card-meta">
-                        <span>{task.subTeam}</span>
-                        <span>·</span>
+                        {task.subTeam !== departmentInfo.name && (
+                          <>
+                            <span>{task.subTeam}</span>
+                            <span>·</span>
+                          </>
+                        )}
                         <span>{task.ministry || "Cell 0"}</span>
                       </div>
                       <div className="task-progress-row">

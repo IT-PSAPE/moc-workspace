@@ -37,7 +37,7 @@ const keyFor = (date: Date) =>
   String(date.getDate()).padStart(2, "0");
 
 export default function CalendarPage() {
-  const { state, user, demo, loading, error } = useWorkspace();
+  const { state, user, loading, error } = useWorkspace();
   const [month, setMonth] = useState(() => {
     const date = new Date();
     date.setDate(1);
@@ -45,6 +45,7 @@ export default function CalendarPage() {
     return date;
   });
   const [selected, setSelected] = useState<Task | null>(null);
+  const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const isCell0 = user?.department === "cell-0";
   const visibleTasks = useMemo(
     () =>
@@ -57,7 +58,13 @@ export default function CalendarPage() {
   const mondayOffset = (monthStart.getDay() + 6) % 7;
   const gridStart = new Date(monthStart);
   gridStart.setDate(monthStart.getDate() - mondayOffset);
-  const days = Array.from({ length: 42 }, (_, index) => {
+  const daysInMonth = new Date(
+    month.getFullYear(),
+    month.getMonth() + 1,
+    0,
+  ).getDate();
+  const dayCount = Math.ceil((mondayOffset + daysInMonth) / 7) * 7;
+  const days = Array.from({ length: dayCount }, (_, index) => {
     const day = new Date(gridStart);
     day.setDate(gridStart.getDate() + index);
     return day;
@@ -100,21 +107,8 @@ export default function CalendarPage() {
   return (
     <div className="workspace-page workflow-page">
       <div className="page-header workflow-header">
-        <div>
-          <div className="eyebrow">Workspace / Planning</div>
-          <div className="page-heading">
-            <div>
-              <h1>Calendar</h1>
-              <p>
-                {isCell0
-                  ? "A shared view of deadlines across all production teams."
-                  : "Deadlines and delivery dates for your department."}
-              </p>
-            </div>
-            <Badge tone={demo ? "gold" : "green"}>
-              {demo ? "Demo workspace" : "Live workspace"}
-            </Badge>
-          </div>
+        <div className="page-heading">
+          <h1>Calendar</h1>
         </div>
         <div className="calendar-month-nav">
           <Button
@@ -167,34 +161,59 @@ export default function CalendarPage() {
                   className={
                     "calendar-day " +
                     (!isCurrentMonth ? "outside-month " : "") +
-                    (isToday ? "today" : "")
+                    (isToday ? "today " : "") +
+                    (tasks.length === 0 ? "empty-day" : "")
                   }
                 >
                   <span className="calendar-day-number">{day.getDate()}</span>
                   <div className="calendar-day-tasks">
-                    {tasks.slice(0, 3).map((task) => (
-                      <button
-                        key={task.id}
-                        className={"calendar-task calendar-task-" + task.status}
-                        onClick={() => setSelected(task)}
-                        title={task.title}
-                      >
-                        <span className="calendar-task-time">
-                          {fmtTime(task.dueAt)}
-                        </span>
-                        <span>{task.title}</span>
-                      </button>
-                    ))}
+                    {tasks
+                      .slice(0, expandedDay === dateKey ? tasks.length : 3)
+                      .map((task) => (
+                        <button
+                          key={task.id}
+                          className={
+                            "calendar-task calendar-task-" + task.status
+                          }
+                          onClick={() => setSelected(task)}
+                          title={task.title}
+                        >
+                          <span className="calendar-task-time">
+                            {fmtTime(task.dueAt)}
+                          </span>
+                          <span>{task.title}</span>
+                        </button>
+                      ))}
                     {tasks.length > 3 && (
-                      <span className="calendar-more">
-                        +{tasks.length - 3} more
-                      </span>
+                      <button
+                        className="calendar-more"
+                        aria-expanded={expandedDay === dateKey}
+                        aria-label={`Show ${expandedDay === dateKey ? "fewer" : "all"} deadlines for ${dateKey}`}
+                        onClick={() =>
+                          setExpandedDay(
+                            expandedDay === dateKey ? null : dateKey,
+                          )
+                        }
+                      >
+                        {expandedDay === dateKey
+                          ? "Show less"
+                          : `+${tasks.length - 3} more`}
+                      </button>
                     )}
                   </div>
                 </div>
               );
             })}
           </div>
+          {!visibleTasks.some((task) => {
+            const due = new Date(task.dueAt);
+            return (
+              due.getMonth() === month.getMonth() &&
+              due.getFullYear() === month.getFullYear()
+            );
+          }) && (
+            <p className="calendar-mobile-empty">No deadlines this month.</p>
+          )}
           <div className="calendar-legend">
             <span>
               <i className="legend-dot pending" /> Pending
@@ -210,7 +229,6 @@ export default function CalendarPage() {
         <aside className="upcoming-card">
           <div className="upcoming-heading">
             <div>
-              <div className="eyebrow">Coming up</div>
               <h2>Next deadlines</h2>
             </div>
             <CalendarDays size={19} />
@@ -238,12 +256,16 @@ export default function CalendarPage() {
                   <span className="upcoming-task-copy">
                     <strong>{task.title}</strong>
                     <small>
-                      {
-                        DEPARTMENTS.find(
-                          (department) => department.id === task.department,
-                        )?.name
-                      }{" "}
-                      · {task.subTeam}
+                      {Array.from(
+                        new Set([
+                          DEPARTMENTS.find(
+                            (department) => department.id === task.department,
+                          )?.name,
+                          task.subTeam,
+                        ]),
+                      )
+                        .filter(Boolean)
+                        .join(" · ")}
                     </small>
                   </span>
                   <ArrowRight size={15} />

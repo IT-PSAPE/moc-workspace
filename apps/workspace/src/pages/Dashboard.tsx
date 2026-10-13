@@ -6,9 +6,12 @@ import {
   ArrowUpRight,
   CalendarDays,
   CheckCircle2,
+  Clapperboard,
   Clock3,
   FolderOpen,
   MoreHorizontal,
+  Music2,
+  Palette,
   Sparkles,
   TrendingUp,
 } from "lucide-react";
@@ -19,10 +22,10 @@ import { Badge, Button } from "@moc/ui";
 const productionDepartments = DEPARTMENTS.filter(
   (department) => department.id !== "cell-0",
 );
-const colors: Record<string, string> = {
-  sound: "gold",
-  "visual-media": "plum",
-  design: "blue",
+const departmentIcons: Record<string, typeof Music2> = {
+  sound: Music2,
+  "visual-media": Clapperboard,
+  design: Palette,
 };
 const labels: Record<string, string> = {
   sound: "Sound",
@@ -51,45 +54,6 @@ function shortRelative(value: string) {
   if (diff === 1) return "Yesterday";
   if (diff < 7) return `${diff} days ago`;
   return formatDay(value);
-}
-
-function ColumnArt() {
-  return (
-    <svg
-      className="quote-architecture"
-      viewBox="0 0 430 260"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="M175 261V83l58-31 58 31v178M194 260V92m39 168V72m39 188V92M162 83l71-42 71 42M175 84h116M168 96h129M184 261h97"
-        stroke="currentColor"
-        strokeWidth="2"
-        opacity=".48"
-      />
-      <path
-        d="M241 261V112l55-30 55 30v149m-37 0V119m-18 142V102m-18 159V119m-38-7 56-31 56 31"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        opacity=".24"
-      />
-      <path
-        d="M105 261V128l39-22 39 22v133m-57 0V136m18 125V120m18 141V136m-57-8 39-23 39 23"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        opacity=".25"
-      />
-      <path
-        d="M130 261h213M146 250h183"
-        stroke="currentColor"
-        strokeWidth="1"
-        opacity=".25"
-      />
-      <circle cx="233" cy="30" r="2" fill="currentColor" opacity=".45" />
-      <circle cx="358" cy="70" r="1.5" fill="currentColor" opacity=".35" />
-      <circle cx="95" cy="73" r="2" fill="currentColor" opacity=".28" />
-    </svg>
-  );
 }
 
 function PulseChart({
@@ -150,27 +114,6 @@ function PulseChart({
           <span key={`${month}-${i}`}>{month}</span>
         ))}
       </div>
-    </div>
-  );
-}
-
-function ProjectThumbnail({ tone }: { tone: string }) {
-  return (
-    <div className={`project-thumb thumb-${tone}`} aria-hidden="true">
-      <svg viewBox="0 0 90 64">
-        <rect width="90" height="64" rx="8" fill="currentColor" opacity=".13" />
-        <circle cx="64" cy="20" r="10" fill="currentColor" opacity=".58" />
-        <path
-          d="M0 50 23 29l14 13 12-10 41 32H0z"
-          fill="currentColor"
-          opacity=".56"
-        />
-        <path
-          d="M0 56 33 39l18 13 15-11 24 13v10H0z"
-          fill="currentColor"
-          opacity=".3"
-        />
-      </svg>
     </div>
   );
 }
@@ -239,11 +182,10 @@ export default function Dashboard() {
       <div className="page-heading dashboard-heading">
         <div>
           <div className="eyebrow">
-            MOC WORKSPACE <span>·</span> OVERVIEW
+            MOC Workspace <span>·</span> Overview
           </div>
           <h1>
             {greeting}, {name}
-            <span className="wave">✳</span>
           </h1>
           <p>Here’s what’s happening across your creative teams.</p>
         </div>
@@ -272,12 +214,11 @@ export default function Dashboard() {
       <section className="quote-banner">
         <div className="quote-copy">
           <div className="quote-kicker">
-            <Sparkles size={14} /> A WORD TO LEAD BY
+            <Sparkles size={16} /> A word to lead by
           </div>
           <blockquote>“Fulfil your duty with faith and excellence.”</blockquote>
           <span>Chairman Man-Hee Lee</span>
         </div>
-        <ColumnArt />
       </section>
 
       <section className="stats-grid" aria-label="Workspace statistics">
@@ -372,7 +313,7 @@ export default function Dashboard() {
         <section className="departments-section">
           <div className="section-heading">
             <div>
-              <div className="eyebrow">YOUR TEAMS</div>
+              <div className="eyebrow">Your teams</div>
               <h2>Departments</h2>
             </div>
             <Link to="/departments" className="text-link">
@@ -404,16 +345,16 @@ export default function Dashboard() {
                   className="department-card"
                 >
                   <div
-                    className={`department-symbol symbol-${colors[department.id]}`}
+                    className="department-symbol symbol-pink"
+                    aria-hidden="true"
                   >
-                    <span>
-                      {department.name === "Visual Media"
-                        ? "VM"
-                        : department.name.slice(0, 2).toUpperCase()}
-                    </span>
+                    {(() => {
+                      const Icon = departmentIcons[department.id] ?? FolderOpen;
+                      return <Icon size={20} strokeWidth={1.9} />;
+                    })()}
                   </div>
                   <div className="department-card-head">
-                    <span className="department-overline">DEPARTMENT</span>
+                    <span className="department-overline">Department</span>
                     <span className="card-menu">
                       <MoreHorizontal size={18} />
                     </span>
@@ -451,7 +392,7 @@ export default function Dashboard() {
           <section className="projects-panel">
             <div className="section-heading compact">
               <div>
-                <div className="eyebrow">IN FOCUS</div>
+                <div className="eyebrow">In focus</div>
                 <h2>Active projects</h2>
               </div>
               <Link to="/departments" className="text-link">
@@ -469,9 +410,13 @@ export default function Dashboard() {
                     className="project-row"
                     key={task.id}
                   >
-                    <ProjectThumbnail
-                      tone={colors[task.department] ?? "green"}
-                    />
+                    <span className="project-thumb" aria-hidden="true">
+                      {(() => {
+                        const Icon =
+                          departmentIcons[task.department] ?? FolderOpen;
+                        return <Icon size={20} strokeWidth={1.9} />;
+                      })()}
+                    </span>
                     <div className="project-meta">
                       <strong>{task.title}</strong>
                       <span>
@@ -509,7 +454,7 @@ export default function Dashboard() {
           <section className="side-panel focus-panel">
             <div className="section-heading compact">
               <div>
-                <div className="eyebrow">YOUR FOCUS</div>
+                <div className="eyebrow">Your focus</div>
                 <h2>One thing at a time</h2>
               </div>
               <Sparkles size={16} className="focus-sparkle" />
@@ -535,7 +480,7 @@ export default function Dashboard() {
                   href={`/departments/${focus.department}`}
                   className="focus-task"
                 >
-                  <span className="focus-task-label">NEXT UP</span>
+                  <span className="focus-task-label">Next up</span>
                   <strong>{focus.title}</strong>
                   <span>
                     {labels[focus.department] ?? focus.department} <i>·</i> Due{" "}
@@ -561,7 +506,7 @@ export default function Dashboard() {
           <section className="side-panel activity-panel">
             <div className="section-heading compact">
               <div>
-                <div className="eyebrow">THE LATEST</div>
+                <div className="eyebrow">The latest</div>
                 <h2>Recent activity</h2>
               </div>
               <MoreHorizontal
@@ -608,7 +553,7 @@ export default function Dashboard() {
           <section className="side-panel deadlines-panel">
             <div className="section-heading compact">
               <div>
-                <div className="eyebrow">COMING UP</div>
+                <div className="eyebrow">Coming up</div>
                 <h2>Upcoming deadlines</h2>
               </div>
               <Link
@@ -656,7 +601,7 @@ export default function Dashboard() {
       </div>
       <section className="pulse-panel">
         <div className="pulse-copy">
-          <div className="eyebrow">A LOOK BACK</div>
+          <div className="eyebrow">A look back</div>
           <h2>Ministry pulse</h2>
           <p>Completed tasks over the past eight months.</p>
           <div className="pulse-total">

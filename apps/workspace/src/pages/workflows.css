@@ -4,27 +4,35 @@
   gap: 22px;
   min-width: 0;
 }
+.workflow-page {
+  color: var(--ink, #302433);
+}
+.eyebrow {
+  color: var(--muted, #75636f);
+  text-transform: none;
+  letter-spacing: 0.03em;
+}
 .department-quote {
   display: flex;
   align-items: center;
   gap: 14px;
   min-height: 58px;
   padding: 11px 16px;
-  border-left: 3px solid #a98a4c;
-  border-radius: 0 10px 10px 0;
-  background: #f5f1e6;
+  border-left: 3px solid var(--brand-pink, #f04494);
+  border-radius: 0 14px 14px 0;
+  background: #fff0f7;
 }
 .department-quote > span {
   flex: 0 0 auto;
   color: #927944;
-  font-size: 9px;
+  font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.13em;
 }
 .department-quote p {
   margin: 0;
-  color: #596254;
-  font: 500 14px/1.45 var(--serif, Georgia, serif);
+  color: var(--ink, #302433);
+  font: 500 16px/1.5 var(--font-body, "Manrope Variable", sans-serif);
 }
 .department-quote-sound {
   border-color: #718c73;
@@ -75,7 +83,7 @@
 .workflow-header h1 {
   margin: 5px 0 7px;
   letter-spacing: -0.045em;
-  font-size: clamp(28px, 3vw, 38px);
+  font-size: clamp(30px, 3.4vw, 40px);
   line-height: 1.08;
 }
 .workflow-header p {
@@ -83,10 +91,150 @@
   color: var(--muted, #777b70);
   font-size: 14px;
 }
+.workflow-toolbar,
+.workflow-empty,
+.kanban-column,
+.task-card,
+.detail-grid,
+.private-notes,
+.private-note,
+.workflow-form,
+.request-form {
+  border-color: var(--line, #eedfe7);
+}
+.workflow-toolbar {
+  border-radius: 16px;
+  background: #fff;
+}
+.kanban-column {
+  background: #fffafd;
+  border-radius: 18px;
+}
+.task-card {
+  background: #fff;
+  border-radius: 16px;
+}
+.task-card h3 {
+  color: var(--ink, #302433);
+  font-size: 15px;
+}
+.task-card-service,
+.task-card-meta,
+.task-card-footer {
+  color: var(--muted, #75636f);
+  font-size: 14px;
+}
+.task-reference {
+  color: var(--muted, #75636f);
+  font-size: 13px;
+}
+.workflow-header h1,
+.detail-title-row h2 {
+  color: var(--ink, #302433);
+  font-family: var(--font-display, sans-serif);
+}
+.workflow-alert {
+  border-color: #efc4d8;
+  background: #fff0f7;
+  color: #704456;
+}
+.workflow-empty {
+  color: var(--muted, #75636f);
+}
+.workflow-empty > svg {
+  color: var(--brand-pink-strong, #ce246f);
+}
+.workflow-skeleton {
+  background: linear-gradient(110deg, #fff0f7 8%, #fffafd 18%, #fff0f7 33%);
+}
+.progress-track > span {
+  background: var(--brand-pink, #f04494);
+}
+.progress-choice.active {
+  border-color: var(--brand-pink, #f04494);
+  background: #fff0f7;
+  color: var(--brand-pink-strong, #ce246f);
+}
+.detail-grid {
+  background: #fffafd;
+  border-radius: 14px;
+}
+.private-notes {
+  background: #fff7fb;
+  border-radius: 14px;
+}
+.workflow-form select,
+.workflow-form input,
+.workflow-form textarea,
+.detail-edit select,
+.request-review-actions select,
+.leader-form select,
+.leader-form input,
+.workflow-filters select,
+.workflow-search input {
+  font-size: 16px;
+}
+.workflow-form button,
+.detail-actions .button {
+  font-size: 15px;
+}
+.department-quote-sound,
+.department-quote-visual-media,
+.department-quote-design {
+  border-color: var(--brand-pink, #f04494);
+  background: #fff0f7;
+}
+.department-quote-sound > span,
+.department-quote-visual-media > span,
+.department-quote-design > span {
+  color: var(--brand-pink-strong, #ce246f);
+}
+.department-tone-sound .kanban-column,
+.department-tone-visual-media .kanban-column,
+.department-tone-design .kanban-column {
+  background: #fffafd;
+}
+.task-card h3 {
+  font-size: 15px;
+}
+.task-reference,
+.task-card-service,
+.task-card-meta,
+.task-progress-row,
+.task-card-footer {
+  font-size: 14px;
+}
+.field-label,
+.field-hint,
+.form-intro {
+  font-size: 14px;
+}
+.detail-grid span,
+.detail-copy > span,
+.rejection-reason > span {
+  font-size: 14px;
+}
+.detail-grid strong,
+.detail-copy p {
+  font-size: 15px;
+}
+.table-search input,
+.filter-select select,
+.workflow-filters select,
+.workflow-search input,
+.workflow-form input,
+.workflow-form select,
+.workflow-form textarea,
+.detail-edit select,
+.request-review-actions select,
+.leader-form input,
+.leader-form select {
+  font-size: 16px;
+}
 .eyebrow {
   color: #888878;
-  font-size: 10px;
-  text-transform: uppercase;
+  font-size: 13px;
+  text-transform: none;
   letter-spacing: 0.13em;
   font-weight: 700;
 }
@@ -139,7 +287,7 @@
   background: #fffefa;
   color: #30362f;
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
 }
 .workflow-filters select {
   min-height: 34px;
@@ -257,7 +405,7 @@
   border-radius: 20px;
   background: #eeece3;
   color: #73766b;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 700;
 }
 .kanban-card-list {
@@ -310,26 +458,26 @@
 }
 .task-reference {
   color: #929185;
-  font-size: 10px;
+  font-size: 13px;
 }
 .task-card h3 {
   margin: 12px 0 4px;
   color: #2e352d;
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.45;
   font-weight: 700;
 }
 .task-card-service {
   margin: 0;
   color: #72766b;
-  font-size: 11px;
+  font-size: 14px;
 }
 .task-card-meta {
   display: flex;
   gap: 6px;
   margin-top: 12px;
   color: #8a8b80;
-  font-size: 10px;
+  font-size: 14px;
 }
 .task-progress-row {
   display: flex;
@@ -337,7 +485,7 @@
   gap: 9px;
   margin-top: 12px;
   color: #687163;
-  font-size: 10px;
+  font-size: 14px;
   font-weight: 600;
 }
 .progress-track {
@@ -361,7 +509,7 @@
   justify-content: space-between;
   margin-top: 12px;
   color: #87897e;
-  font-size: 10px;
+  font-size: 13px;
 }
 .task-card-footer > span {
   display: inline-flex;
@@ -380,7 +528,7 @@
   border: 1px dashed #deddd3;
   border-radius: 10px;
   color: #98988d;
-  font-size: 11px;
+  font-size: 13px;
 }
 .workflow-detail {
   display: flex;
@@ -419,20 +567,20 @@
 .detail-copy > span,
 .rejection-reason > span {
   color: #858679;
-  font-size: 10px;
-  text-transform: uppercase;
+  font-size: 14px;
+  text-transform: none;
   letter-spacing: 0.08em;
   font-weight: 700;
 }
 .detail-grid strong {
   color: #373d34;
-  font-size: 12px;
+  font-size: 15px;
   line-height: 1.45;
 }
 .detail-copy p {
   margin: 7px 0 0;
   color: #555b51;
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.65;
   white-space: pre-wrap;
 }
@@ -458,7 +606,7 @@
 .detail-section-heading p {
   margin: 4px 0 0;
   color: #85867a;
-  font-size: 11px;
+  font-size: 13px;
 }
 .detail-section-heading > strong {
   color: #65785d;
@@ -479,7 +627,7 @@
   border-radius: 8px;
   background: #fffefa;
   color: #6f7469;
-  font-size: 11px;
+  font-size: 13px;
   cursor: pointer;
 }
 .progress-choice.active {
@@ -497,7 +645,7 @@
   gap: 8px;
 }
 .detail-actions .button {
-  font-size: 11px;
+  font-size: 13px;
 }
 .private-notes {
   border-top: 0;
@@ -519,14 +667,14 @@
 .private-note p {
   margin: 0 0 7px;
   color: #454b42;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
   white-space: pre-wrap;
 }
 .private-note span,
 .muted-copy {
   color: #88897d;
-  font-size: 10px;
+  font-size: 13px;
 }
 .inline-note-form {
   display: flex;
@@ -543,7 +691,7 @@
   background: #fffefa;
   color: #30362f;
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
 }
 .inline-note-form .button {
   flex-shrink: 0;
@@ -556,7 +704,7 @@
 .form-intro {
   margin: 0 0 1px;
   color: #74766b;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.55;
 }
 .field {
@@ -567,12 +715,12 @@
 }
 .field-label {
   color: #51574d;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 650;
 }
 .field-hint {
   color: #87887c;
-  font-size: 10px;
+  font-size: 13px;
 }
 .form-row {
   display: grid;
@@ -596,7 +744,7 @@
   background: transparent;
   color: #838579;
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
 }
 .request-tab > span {
@@ -608,7 +756,7 @@
   border-radius: 20px;
   background: #efeee7;
   color: #6f7369;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 700;
 }
 .request-tab.active,
@@ -632,7 +780,7 @@
   border-radius: 10px;
   background: #fffefa;
   color: #7c7e72;
-  font-size: 11px;
+  font-size: 13px;
 }
 .requests-summary strong {
   color: #a27e38;
@@ -646,7 +794,7 @@
 }
 .request-result-count {
   color: #8a8b80;
-  font-size: 11px;
+  font-size: 13px;
 }
 .request-list {
   overflow: hidden;
@@ -699,7 +847,7 @@
   align-items: center;
   gap: 9px;
   color: #8a8a7d;
-  font-size: 10px;
+  font-size: 13px;
   letter-spacing: 0.03em;
 }
 .request-title-block h2 {
@@ -713,7 +861,7 @@
 .request-title-block p {
   margin: 0;
   color: #818378;
-  font-size: 11px;
+  font-size: 13px;
 }
 .request-title-block p span {
   margin: 0 3px;
@@ -731,13 +879,13 @@
   gap: 3px;
 }
 .request-row-side > div span {
-  font-size: 9px;
-  text-transform: uppercase;
+  font-size: 13px;
+  text-transform: none;
   letter-spacing: 0.08em;
 }
 .request-row-side strong {
   color: #51564d;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
 }
 .short-notice-label {
@@ -745,7 +893,7 @@
   align-items: center;
   gap: 4px;
   color: #a06b30;
-  font-size: 9px;
+  font-size: 13px;
   font-weight: 700;
 }
 .short-notice-banner {
@@ -758,12 +906,12 @@
   color: #997138;
 }
 .short-notice-banner strong {
-  font-size: 12px;
+  font-size: 13px;
 }
 .short-notice-banner p {
   margin: 3px 0 0;
   color: #8a754f;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.45;
 }
 .aired-date-list {
@@ -791,7 +939,7 @@
 .rejection-reason p {
   margin: 6px 0 0;
   color: #865d4d;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
 }
 .list-empty {
@@ -842,9 +990,9 @@
 .calendar-weekdays span {
   color: #85877a;
   text-align: center;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 700;
-  text-transform: uppercase;
+  text-transform: none;
   letter-spacing: 0.07em;
 }
 .calendar-grid {
@@ -870,7 +1018,7 @@
   place-items: center;
   border-radius: 50%;
   color: #53594e;
-  font-size: 10px;
+  font-size: 13px;
 }
 .calendar-day.today .calendar-day-number {
   background: #728565;
@@ -902,7 +1050,7 @@
   color: #6e5b31;
   text-align: left;
   font: inherit;
-  font-size: 9px;
+  font-size: 13px;
   cursor: pointer;
 }
 .calendar-task-in-progress {
@@ -920,13 +1068,13 @@
 }
 .calendar-task-time {
   flex: 0 0 auto;
-  font-size: 8px;
+  font-size: 13px;
   opacity: 0.8;
 }
 .calendar-more {
   padding-left: 5px;
   color: #88897e;
-  font-size: 9px;
+  font-size: 13px;
 }
 .calendar-legend {
   display: flex;
@@ -940,7 +1088,7 @@
   align-items: center;
   gap: 6px;
   color: #77796f;
-  font-size: 10px;
+  font-size: 13px;
 }
 .legend-dot {
   width: 7px;
@@ -1013,8 +1161,8 @@
 .upcoming-date small {
   margin-top: 3px;
   color: #8a8b7e;
-  font-size: 9px;
-  text-transform: uppercase;
+  font-size: 13px;
+  text-transform: none;
 }
 .upcoming-task-copy {
   display: flex;
@@ -1026,14 +1174,14 @@
 .upcoming-task-copy strong {
   overflow: hidden;
   color: #43493f;
-  font-size: 10px;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .upcoming-task-copy small {
   overflow: hidden;
   color: #8d8e83;
-  font-size: 9px;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1043,7 +1191,7 @@
   align-items: center;
   padding: 28px 10px;
   color: #9a9b90;
-  font-size: 11px;
+  font-size: 13px;
 }
 .upcoming-empty p {
   margin-bottom: 0;
@@ -1054,7 +1202,7 @@
   align-items: center;
   gap: 8px;
   color: #727e68;
-  font-size: 12px;
+  font-size: 13px;
 }
 .calendar-detail-date strong {
   color: #454c42;
@@ -1064,7 +1212,7 @@
   align-items: center;
   gap: 10px;
   color: #74786d;
-  font-size: 11px;
+  font-size: 13px;
 }
 .calendar-progress .progress-track {
   max-width: 250px;
@@ -1108,7 +1256,7 @@
 .account-summary p {
   margin: 5px 0 0;
   color: #818378;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.5;
 }
 .settings-icon {
@@ -1137,7 +1285,7 @@
   border-radius: 9px;
   background: #faf9f4;
   color: #77796e;
-  font-size: 10px;
+  font-size: 13px;
 }
 .access-guide strong {
   color: #454b42;
@@ -1165,7 +1313,7 @@
   border-radius: 50%;
   background: #eeefe8;
   color: #5c6d53;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 700;
 }
 .leader-identity,
@@ -1179,7 +1327,7 @@
 .leader-role strong {
   overflow: hidden;
   color: #40473e;
-  font-size: 11px;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1189,13 +1337,13 @@
   gap: 4px;
   overflow: hidden;
   color: #8b8c81;
-  font-size: 10px;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .leader-role span {
   color: #87897d;
-  font-size: 10px;
+  font-size: 13px;
 }
 .leader-form {
   display: flex;
@@ -1220,7 +1368,7 @@
 .leader-form-heading p {
   margin: 4px 0 0;
   color: #85867b;
-  font-size: 10px;
+  font-size: 13px;
 }
 .demo-role-card .settings-card-heading {
   align-items: center;
@@ -1253,12 +1401,12 @@
   cursor: wait;
 }
 .demo-role-option span {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
 }
 .demo-role-option small {
   color: #898a7f;
-  font-size: 9px;
+  font-size: 13px;
 }
 .account-summary {
   display: grid;
@@ -1268,7 +1416,7 @@
 }
 .account-summary > div:nth-child(2) > span {
   color: #85867a;
-  font-size: 10px;
+  font-size: 13px;
 }
 .account-summary .settings-icon {
   grid-row: span 2;
@@ -1282,13 +1430,13 @@
 }
 .account-role span {
   color: #8a8b80;
-  font-size: 9px;
-  text-transform: uppercase;
+  font-size: 13px;
+  text-transform: none;
   letter-spacing: 0.07em;
 }
 .account-role strong {
   color: #434a40;
-  font-size: 11px;
+  font-size: 13px;
 }
 .integrations-card {
   display: flex;
@@ -1326,11 +1474,11 @@
 }
 .integration-brand strong {
   color: #41483f;
-  font-size: 12px;
+  font-size: 13px;
 }
 .integration-brand small {
   color: #88897e;
-  font-size: 10px;
+  font-size: 13px;
 }
 .integration-note {
   display: flex;
@@ -1346,7 +1494,7 @@
 }
 .integration-note p {
   margin: 0;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.55;
 }
 .integration-meta {
@@ -1357,11 +1505,11 @@
 }
 .integration-meta span {
   color: #898a7f;
-  font-size: 10px;
+  font-size: 13px;
 }
 .integration-meta strong {
   color: #52584e;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 600;
 }
 .report-export {
@@ -1384,7 +1532,7 @@
   align-items: center;
   gap: 9px;
   color: #66785d;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 .report-month-controls {
@@ -1395,7 +1543,7 @@
 .report-month-controls strong {
   min-width: 120px;
   color: #454b41;
-  font-size: 12px;
+  font-size: 13px;
   text-align: center;
 }
 .report-month-controls button {
@@ -1451,7 +1599,7 @@
 }
 .report-metric > span {
   color: #7e8075;
-  font-size: 10px;
+  font-size: 13px;
 }
 .report-metric > strong {
   color: #30372f;
@@ -1461,7 +1609,7 @@
 }
 .report-metric > small {
   color: #939488;
-  font-size: 9px;
+  font-size: 13px;
 }
 .report-detail-card {
   overflow: hidden;
@@ -1482,7 +1630,7 @@
 .report-detail-heading p {
   margin: 5px 0 0;
   color: #85867a;
-  font-size: 10px;
+  font-size: 13px;
 }
 .report-table-wrap {
   overflow-x: auto;
@@ -1497,15 +1645,15 @@
   background: #faf9f4;
   color: #88897e;
   text-align: left;
-  text-transform: uppercase;
+  text-transform: none;
   letter-spacing: 0.07em;
-  font-size: 9px;
+  font-size: 13px;
 }
 .report-table td {
   padding: 12px 13px;
   border-top: 1px solid #f0eee7;
   color: #696e63;
-  font-size: 10px;
+  font-size: 13px;
 }
 .report-table tbody tr:hover {
   background: #fcfbf7;
@@ -1526,10 +1674,10 @@
 .report-table td:first-child small {
   margin-top: 4px;
   color: #929388;
-  font-size: 9px;
+  font-size: 13px;
 }
 .report-table .badge {
-  font-size: 9px;
+  font-size: 13px;
 }
 .table-progress {
   display: flex;
@@ -1543,13 +1691,13 @@
 }
 .table-progress small {
   color: #84867a;
-  font-size: 9px;
+  font-size: 13px;
 }
 .report-table-empty {
   padding: 34px;
   color: #929388;
   text-align: center;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 @media (max-width: 1050px) {
@@ -1614,7 +1762,7 @@
   }
   .calendar-task {
     padding: 3px;
-    font-size: 8px;
+    font-size: 13px;
   }
   .calendar-task-time {
     display: none;
@@ -1688,7 +1836,7 @@
     min-height: 62px;
   }
   .calendar-weekdays span {
-    font-size: 8px;
+    font-size: 13px;
   }
   .calendar-task {
     justify-content: center;
@@ -1705,7 +1853,7 @@
     gap: 4px;
   }
   .calendar-legend span {
-    font-size: 8px;
+    font-size: 13px;
   }
   .detail-grid {
     grid-template-columns: 1fr 1fr;
@@ -1727,7 +1875,7 @@
     gap: 4px;
   }
   .progress-choice {
-    font-size: 9px;
+    font-size: 13px;
   }
   .report-metrics {
     gap: 7px;
@@ -1739,4 +1887,43 @@
   .report-metric > strong {
     font-size: 22px;
   }
+}
+
+/* Keep dense workflow content readable across department boards and dialogs. */
+.task-card h3 {
+  font-size: 15px;
+}
+.task-reference,
+.task-card-service,
+.task-card-meta,
+.task-progress-row,
+.task-card-footer {
+  font-size: 14px;
+}
+.field-label,
+.field-hint,
+.form-intro {
+  font-size: 14px;
+}
+.detail-grid span,
+.detail-copy > span,
+.rejection-reason > span {
+  font-size: 14px;
+}
+.detail-grid strong,
+.detail-copy p {
+  font-size: 15px;
+}
+.table-search input,
+.filter-select select,
+.workflow-filters select,
+.workflow-search input,
+.workflow-form input,
+.workflow-form select,
+.workflow-form textarea,
+.detail-edit select,
+.request-review-actions select,
+.leader-form input,
+.leader-form select {
+  font-size: 16px;
 }

@@ -7,7 +7,7 @@ import {
 } from "@tanstack/react-router";
 import { API_URL, api, useSession } from "@moc/client";
 import { useState } from "react";
-import { Landmark, ArrowRight, ShieldCheck, RefreshCw } from "lucide-react";
+import { ArrowRight, ShieldCheck, RefreshCw } from "lucide-react";
 import type { Department, Session } from "@moc/shared";
 import Shell from "./Shell";
 import Dashboard from "./pages/Dashboard";
@@ -25,7 +25,9 @@ function Gate() {
   if (loading)
     return (
       <div className="access-screen">
-        <Landmark size={42} />
+        <span className="access-wordmark">
+          MOC<span>.</span>
+        </span>
         <p>Preparing your workspace…</p>
       </div>
     );
@@ -33,7 +35,9 @@ function Gate() {
     return (
       <div className="access-screen">
         <div className="access-card">
-          <Landmark size={44} />
+          <span className="access-wordmark">
+            MOC<span>.</span>
+          </span>
           <span className="eyebrow">MINISTRY OF CULTURE</span>
           <h1>
             Good work starts

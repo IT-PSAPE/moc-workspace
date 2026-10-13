@@ -31,22 +31,6 @@ const mainNav = [
   { label: "Reports", href: "/reports", icon: Activity, cell0: true },
 ];
 
-function BrandMark() {
-  return (
-    <svg viewBox="0 0 42 42" aria-hidden="true" className="brand-mark">
-      <path
-        d="M6 35h30M10 32V15l11-7 11 7v17M15 32V17m6 15V15m6 17V17M8 15l13-9 13 9"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path d="M18 6h6" stroke="currentColor" strokeWidth="1.6" />
-    </svg>
-  );
-}
-
 function initials(name: string) {
   return name
     .split(/\s+/)
@@ -96,13 +80,14 @@ export default function Shell({ children }: { children: ReactNode }) {
     <div className="workspace-shell">
       <aside className="sidebar">
         <a className="brand" href="/" aria-label="MOC Workspace home">
-          <BrandMark />
+          <span className="brand-wordmark" aria-hidden="true">
+            MOC
+          </span>
           <span className="brand-copy">
-            <strong>MOC</strong>
-            <small>WORKSPACE</small>
+            <small>Workspace</small>
           </span>
         </a>
-        <div className="sidebar-label">WORKSPACE</div>
+        <div className="sidebar-label">Workspace</div>
         <nav className="side-nav" aria-label="Main navigation">
           {mainNav
             .filter((item) => !item.cell0 || canSeeAll)
@@ -190,7 +175,9 @@ export default function Shell({ children }: { children: ReactNode }) {
             aria-label="Open navigation"
             onClick={() => setNavigationOpen(true)}
           >
-            <BrandMark />
+            <span className="mobile-brand-wordmark" aria-hidden="true">
+              MOC
+            </span>
           </button>
           <div className="topbar-date">
             <span>{date}</span>
@@ -229,7 +216,7 @@ export default function Shell({ children }: { children: ReactNode }) {
         </header>
         {demo && (
           <div className="demo-banner">
-            <span>DEMO</span> Sample data is editable and changes are saved in
+            <span>Demo</span> Sample data is editable and changes are saved in
             this local demo workspace.
           </div>
         )}

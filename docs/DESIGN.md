@@ -1,19 +1,19 @@
-# Pink design revision
+# Interface foundations
 
-The dashboard's existing information hierarchy is retained. The revision gives the workspace and portal a shared, energetic identity: vibrant pink `#f04494`, white and pale pink surfaces, plum text, more generous spacing and clear controls. Semantic progress, danger and warning colors remain distinct.
+The interface uses the public [Untitled UI React repository](https://github.com/untitleduico/react) as a spacing, typography and component reference, adapted to MOC's existing Base UI components and bright pink brand. This is an implementation informed by the public system, not an installation of its React Aria runtime or paid page templates.
 
-## Type and assets
+## Typography and tokens
 
-Space Grotesk supplies expressive headings and numerals; Manrope supplies body copy, forms and navigation. Both are self-hosted variable fonts. The pairing is a design choice: distinctive display forms with quieter interface text. Research sources: [Space Grotesk's designer](https://fonts.floriankarsten.com/space-grotesk) and [Manrope's upstream project](https://github.com/sharanda/manrope).
+The public [theme](https://github.com/untitleduico/react/blob/main/styles/theme.css), [buttons](https://github.com/untitleduico/react/blob/main/components/base/buttons/button.tsx), [inputs](https://github.com/untitleduico/react/blob/main/components/base/input/input.tsx) and [tables](https://github.com/untitleduico/react/blob/main/components/application/table/table.tsx) supplied concrete references. MOC self-hosts Inter for both headings and body copy. The scale uses 14/20 supporting text, 16/24 body and form controls, 18/28 section headings, 24/32 panels and 30/38 desktop page headings. Headings and important controls use weight 600.
 
-Body and form text are 15–16px, supporting labels and helper copy 13–14px. Tiny captions and serif fallback headings are removed. Desktop and phone layouts accommodate larger text rather than shrinking it at narrow widths.
+Spacing follows 4px increments, with 6px label-to-field spacing, 12–16px within compact groups and 16–24px between sections. Cards use 8–12px radii, neutral borders and restrained shadows. Pink #f04494 remains the main accent; neutral white and gray surfaces support the information hierarchy. Existing Lucide icons follow consistent sizes and stroke styling. Semantic status colors stay distinct.
 
-The invented column logo and quote illustration are removed. A simple MOC wordmark is used until an approved brand asset exists. Quotes use typography; standard Lucide icons communicate actions and services. The design does not depend on decorative generated SVGs or remote images.
+## Information hierarchy
 
-## Portal journey
+Repeated demo/live badges, redundant breadcrumbs, rank summaries, decorative headings and infrastructure disclosures were removed. Settings presents the leader, department, rank and approval status once in a table, with add/approve/revoke actions. Readable development-mode behavior remains API-controlled and documented; UI changes do not enable production storage or authentication.
 
-One segmented control switches between **Make a request** and **Track & edit**. The main form is the focus, with short contextual guidance. The previous large explainer card and workspace/login links are removed from the public header.
+The dashboard retains the user's accepted structure and chairman's quote, in a compact quote row. Department cards adapt to the available width without leaving an isolated fourth card. Boards keep relevant service, ministry and sub-team context and omit exact repetitions.
 
-The API issues a cryptographically random tracking code when a request is submitted. The code is the credential for returning requesters; its hash is stored on the API. Internal sequential references remain useful to leaders and are not public access credentials. The code contains no encrypted personal or request data.
+The public portal has one request/track segmented control, a concise heading and the form. A random bearer code unlocks tracked details and pending edits. Only its hash is persisted; references remain internal identifiers. Approved/rejected details are read-only. Code safety guidance remains at issuance, with repeated explainer panels removed.
 
-Entering a valid code shows status and request details. Pending requests immediately expose an editable form. Approved and rejected requests are read-only. Edit eligibility is enforced by the API, and task notes remain private. The raw tracking code is shown on creation and stays out of URLs, bot messages, logs and leader responses.
+On phones, the calendar becomes an agenda for the selected month. The month controls change visible deadlines, with an empty state when needed. Overflowed days expand through a real button. Tables scroll inside their own cards; hidden accessible headers no longer expand the page.

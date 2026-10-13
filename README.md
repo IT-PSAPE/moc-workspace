@@ -18,7 +18,7 @@ npm run dev
 - Public portal: http://localhost:5174
 - API health: http://localhost:3001/health
 
-The API defaults to an on-disk JSON repository. `DEMO_MODE=true` in `apps/api/.env` enables clearly labeled sample leader sessions. The workspace opens as Cell 0 in demo mode; Settings can switch to Sound, Design or Visual Media. Demo changes persist under `apps/api/data/`, which is ignored by Git. Files and deliverables remain on Telegram; the app has no upload or media-storage capability.
+The API defaults to an on-disk JSON repository. `DEMO_MODE=true` in `apps/api/.env` enables sample leader sessions. The workspace opens as Cell 0 in local development mode. Department permissions are exercised in the API tests. Demo changes persist under `apps/api/data/`, which is ignored by Git. Files and deliverables remain on Telegram; the app has no upload or media-storage capability.
 
 ## Stack and boundaries
 
@@ -31,7 +31,7 @@ The API defaults to an on-disk JSON repository. `DEMO_MODE=true` in `apps/api/.e
 | `packages/client` | HTTP client and TanStack Query hooks; no database credentials                                             |
 | `packages/ui`     | Shared Base UI primitives, self-hosted fonts and theme tokens                                             |
 
-Both frontends use TypeScript, React, Tailwind CSS and Base UI. The workspace uses TanStack Router; both applications use TanStack Query. The design keeps the dashboard hierarchy from the supplied reference, with a bright pink brand and larger, self-hosted Space Grotesk and Manrope typography. See [DESIGN.md](docs/DESIGN.md) for the design rationale.
+Both frontends use TypeScript, React, Tailwind CSS and Base UI. The workspace uses TanStack Router; both applications use TanStack Query. The design keeps the dashboard hierarchy from the supplied reference, with a bright pink brand and self-hosted Inter typography and a compact spacing scale informed by Untitled UI. See [DESIGN.md](docs/DESIGN.md) for the design rationale.
 
 Cell 0 can manage every department and private Cell 0 work, approve/reject requests, create internal tasks, review monthly reports and manage leader access. Department leaders can view the three production departments and edit their own. Notes are private to Cell 0 and the owning department; public tracking never includes them. Department calendars show their own deadlines; Cell 0 sees all. Workers do not have accounts.
 

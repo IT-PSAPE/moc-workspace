@@ -4,13 +4,13 @@ import {
   Activity,
   CalendarDays,
   Check,
-  CircleHelp,
   ClipboardList,
   LayoutDashboard,
   LogOut,
   Search,
   Settings,
   Bell,
+  Menu,
   Users,
 } from "lucide-react";
 import { DEPARTMENTS } from "@moc/shared";
@@ -41,8 +41,7 @@ function initials(name: string) {
 }
 
 export default function Shell({ children }: { children: ReactNode }) {
-  const { state, user, demo, loading, error, act, logout, refresh } =
-    useWorkspace();
+  const { state, user, loading, error, act, logout, refresh } = useWorkspace();
   const [actionError, setActionError] = useState("");
   const [notificationError, setNotificationError] = useState("");
   const [markingRead, setMarkingRead] = useState(false);
@@ -87,7 +86,6 @@ export default function Shell({ children }: { children: ReactNode }) {
             <small>Workspace</small>
           </span>
         </a>
-        <div className="sidebar-label">Workspace</div>
         <nav className="side-nav" aria-label="Main navigation">
           {mainNav
             .filter((item) => !item.cell0 || canSeeAll)
@@ -120,25 +118,14 @@ export default function Shell({ children }: { children: ReactNode }) {
           <span>Settings</span>
         </Link>
         <div className="sidebar-note">
-          <div className="sidebar-note-icon">
-            <CircleHelp size={17} />
-          </div>
-          <strong>Need a hand?</strong>
-          <p>A quick guide to the workspace and how requests move.</p>
           <button
             type="button"
             className="guide-link"
             onClick={() => setGuideOpen(true)}
           >
-            View the guide <span aria-hidden="true">↗</span>
+            Quick guide <span aria-hidden="true">↗</span>
           </button>
         </div>
-        {demo && (
-          <div className="demo-pill">
-            <span />
-            Demo environment
-          </div>
-        )}
         <div className="profile-card">
           <div className="avatar">{user ? initials(user.name) : "M"}</div>
           <div className="profile-copy">
@@ -175,6 +162,7 @@ export default function Shell({ children }: { children: ReactNode }) {
             aria-label="Open navigation"
             onClick={() => setNavigationOpen(true)}
           >
+            <Menu size={18} aria-hidden="true" />
             <span className="mobile-brand-wordmark" aria-hidden="true">
               MOC
             </span>
@@ -214,12 +202,6 @@ export default function Shell({ children }: { children: ReactNode }) {
             </button>
           </div>
         </header>
-        {demo && (
-          <div className="demo-banner">
-            <span>Demo</span> Sample data is editable and changes are saved in
-            this local demo workspace.
-          </div>
-        )}
         <div className="page-content">
           {(error || actionError) && (
             <div role="alert" className="connection-error">

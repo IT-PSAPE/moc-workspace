@@ -38,7 +38,6 @@ function Gate() {
           <span className="access-wordmark">
             MOC<span>.</span>
           </span>
-          <span className="eyebrow">MINISTRY OF CULTURE</span>
           <h1>
             Good work starts
             <br />
@@ -59,7 +58,7 @@ function Gate() {
           >
             Continue with Google <ArrowRight size={16} />
           </a>
-          {session?.demo && (
+          {import.meta.env.DEV && session?.demo && (
             <button
               className="button button-secondary"
               disabled={busy}
@@ -78,7 +77,7 @@ function Gate() {
                 }
               }}
             >
-              {busy ? "Opening…" : "Explore the demo workspace"}
+              {busy ? "Opening…" : "Open workspace"}
             </button>
           )}
           {error && (

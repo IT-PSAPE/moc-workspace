@@ -1,18 +1,12 @@
 import { Link } from "@tanstack/react-router";
 import {
-  Activity,
-  ArrowDownRight,
   ArrowRight,
-  ArrowUpRight,
   CalendarDays,
-  CheckCircle2,
   Clapperboard,
   Clock3,
   FolderOpen,
-  MoreHorizontal,
   Music2,
   Palette,
-  Sparkles,
   TrendingUp,
 } from "lucide-react";
 import { DEPARTMENTS } from "@moc/shared";
@@ -181,9 +175,6 @@ export default function Dashboard() {
     <div className="dashboard-page">
       <div className="page-heading dashboard-heading">
         <div>
-          <div className="eyebrow">
-            MOC Workspace <span>·</span> Overview
-          </div>
           <h1>
             {greeting}, {name}
           </h1>
@@ -213,9 +204,6 @@ export default function Dashboard() {
 
       <section className="quote-banner">
         <div className="quote-copy">
-          <div className="quote-kicker">
-            <Sparkles size={16} /> A word to lead by
-          </div>
           <blockquote>“Fulfil your duty with faith and excellence.”</blockquote>
           <span>Chairman Man-Hee Lee</span>
         </div>
@@ -225,9 +213,6 @@ export default function Dashboard() {
         <article className="stat-card">
           <div className="stat-top">
             <span>Due this week</span>
-            <span className="stat-icon icon-amber">
-              <CalendarDays size={17} />
-            </span>
           </div>
           <div className="stat-value">
             {dueWeek.length}
@@ -239,22 +224,17 @@ export default function Dashboard() {
                 ? "Keep an eye on these deadlines"
                 : "Your week is looking clear"}
             </span>
-            <ArrowUpRight size={14} />
           </div>
         </article>
         <article className="stat-card">
           <div className="stat-top">
             <span>Completed this month</span>
-            <span className="stat-icon icon-green">
-              <CheckCircle2 size={17} />
-            </span>
           </div>
           <div className="stat-value">
             {doneMonth.length}
             <span className="stat-unit">tasks</span>
           </div>
           <div className="stat-foot positive">
-            <TrendingUp size={14} />
             <span>Great work, team</span>
           </div>
         </article>
@@ -263,11 +243,6 @@ export default function Dashboard() {
         >
           <div className="stat-top">
             <span>Overdue</span>
-            <span
-              className={`stat-icon ${overdueTasks.length ? "icon-red" : "icon-slate"}`}
-            >
-              <Clock3 size={17} />
-            </span>
           </div>
           <div className="stat-value">
             {overdueTasks.length}
@@ -279,19 +254,11 @@ export default function Dashboard() {
                 ? "Needs a little attention"
                 : "Everything is on track"}
             </span>
-            {overdueTasks.length ? (
-              <ArrowDownRight size={14} />
-            ) : (
-              <CheckCircle2 size={14} />
-            )}
           </div>
         </article>
         <article className="stat-card">
           <div className="stat-top">
             <span>Pending tasks</span>
-            <span className="stat-icon icon-blue">
-              <FolderOpen size={17} />
-            </span>
           </div>
           <div className="stat-value">
             {tasks.filter((task) => task.status === "pending").length}
@@ -313,7 +280,6 @@ export default function Dashboard() {
         <section className="departments-section">
           <div className="section-heading">
             <div>
-              <div className="eyebrow">Your teams</div>
               <h2>Departments</h2>
             </div>
             <Link to="/departments" className="text-link">
@@ -353,12 +319,6 @@ export default function Dashboard() {
                       return <Icon size={20} strokeWidth={1.9} />;
                     })()}
                   </div>
-                  <div className="department-card-head">
-                    <span className="department-overline">Department</span>
-                    <span className="card-menu">
-                      <MoreHorizontal size={18} />
-                    </span>
-                  </div>
                   <h3>{department.name}</h3>
                   <div className="department-counts">
                     <span>
@@ -392,7 +352,6 @@ export default function Dashboard() {
           <section className="projects-panel">
             <div className="section-heading compact">
               <div>
-                <div className="eyebrow">In focus</div>
                 <h2>Active projects</h2>
               </div>
               <Link to="/departments" className="text-link">
@@ -454,10 +413,8 @@ export default function Dashboard() {
           <section className="side-panel focus-panel">
             <div className="section-heading compact">
               <div>
-                <div className="eyebrow">Your focus</div>
                 <h2>One thing at a time</h2>
               </div>
-              <Sparkles size={16} className="focus-sparkle" />
             </div>
             {(() => {
               const focus = [...tasks]
@@ -480,7 +437,6 @@ export default function Dashboard() {
                   href={`/departments/${focus.department}`}
                   className="focus-task"
                 >
-                  <span className="focus-task-label">Next up</span>
                   <strong>{focus.title}</strong>
                   <span>
                     {labels[focus.department] ?? focus.department} <i>·</i> Due{" "}
@@ -506,14 +462,8 @@ export default function Dashboard() {
           <section className="side-panel activity-panel">
             <div className="section-heading compact">
               <div>
-                <div className="eyebrow">The latest</div>
                 <h2>Recent activity</h2>
               </div>
-              <MoreHorizontal
-                size={18}
-                className="activity-options-mark"
-                aria-hidden="true"
-              />
             </div>
             <div className="activity-list">
               {activities
@@ -522,15 +472,6 @@ export default function Dashboard() {
                 .slice(0, 4)
                 .map((activity) => (
                   <div className="activity-item" key={activity.id}>
-                    <div className={`activity-icon activity-${activity.type}`}>
-                      {activity.type === "completed" ? (
-                        <CheckCircle2 size={15} />
-                      ) : activity.type === "request" ? (
-                        <FolderOpen size={15} />
-                      ) : (
-                        <Activity size={15} />
-                      )}
-                    </div>
                     <div className="activity-text">
                       <p>{activity.text}</p>
                       <span>
@@ -553,7 +494,6 @@ export default function Dashboard() {
           <section className="side-panel deadlines-panel">
             <div className="section-heading compact">
               <div>
-                <div className="eyebrow">Coming up</div>
                 <h2>Upcoming deadlines</h2>
               </div>
               <Link
@@ -586,7 +526,6 @@ export default function Dashboard() {
                       {task.ministry}
                     </span>
                   </div>
-                  <span className="deadline-dot" />
                 </a>
               ))}
               {!upcoming.length && (
@@ -601,7 +540,6 @@ export default function Dashboard() {
       </div>
       <section className="pulse-panel">
         <div className="pulse-copy">
-          <div className="eyebrow">A look back</div>
           <h2>Ministry pulse</h2>
           <p>Completed tasks over the past eight months.</p>
           <div className="pulse-total">

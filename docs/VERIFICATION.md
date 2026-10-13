@@ -1,21 +1,23 @@
 # Verification — 13 October 2026
 
-Factory coordination and Luna implementation agents built the API/domain/auth, workspace design, leader workflows and public portal. Separate Luna reviews inspected the API/domain and frontend source. Reported defects were fixed and rechecked; both reviews accepted the resulting implementation.
+Factory coordination and Luna agents implemented the monorepo and the pink design revision. An independent Luna review inspected the public tracking credential, permission projections, limiter and portal draft binding. Its forwarded-header limiter finding was fixed and accepted on recheck.
 
 ## Automated checks
 
 - Monorepo TypeScript checks passed.
-- 18 tests passed: 14 domain tests and four HTTP API tests.
+- 21 tests passed: 14 domain tests and seven HTTP API tests.
 - API, portal and workspace release builds passed.
-- The bundled API started on a separate temporary port and returned a successful health response; the smoke-test process was stopped.
+- The original bundled API smoke test returned a successful health response on a temporary port; the process was stopped afterward.
 
-Tests exercise public field validation, exact aired dates, service routing, rejection reasons, private notes, cross-department mutation denial, revoked access, progress/completion transitions and malicious metadata on public create/edit. The API repository serializes mutations and writes atomic snapshots.
+Tests exercise validation, exact aired dates, routing, rejection reasons, private notes, cross-department mutation denial, revoked access, completion transitions and malicious metadata. Added tests cover random tracking codes, normalized lookup, removed reference/ministry lookup, secret-hash stripping, closed-request edit denial, spoofed forwarding headers, rate limits and bounded limiter eviction. The repository serializes mutations and writes atomic snapshots.
 
 ## Browser checks
 
-The running portal accepted a request with less than 24 hours' notice, displayed its warning and issued a reference without requiring an account. Reference/ministry tracking retrieved it. A pending edit saved with an updated confirmation. Cell 0 approved it, the task appeared in Design, setting 100% moved it to Completed, and public tracking reported completion with the edit option removed.
+The revised portal accepted an account-free demo request due within 24 hours and showed its short-notice warning. Submission issued a 31-character random tracking code. The receipt opened tracked details with the pending edit form already available; changed notes saved and were present on a later lookup. Making another request returned a blank creation form. Changing the code cleared the old details, and an invalid code displayed a missing-request message.
 
-Desktop dashboard and portal styling were inspected. At a 390-pixel phone viewport, both the dashboard and portal were inspected with no document-level horizontal overflow. Other workspace pages received source and type checks; every phone-state combination was not browser-tested.
+Cell 0 received the revised request with its saved notes, approved it and routed it to Design / Graphic Design. Attempting a save from the stale pending public view refreshed the approved record and removed editing. The original full-flow browser check also verified 100% completion and public progress.
+
+Desktop dashboard, department board, request dialog and portal were visually inspected. Phone dashboard and public portal were inspected at 390 pixels without document-level horizontal overflow. Portal controls were confirmed at 16px and approximately 48px tall. The responsive tab highlight defect found during resize was fixed by placing its pink background directly on the active tab. Department board titles are 15px, metadata and table rows 14px, labels 14px and controls 16px. Other workspace states received source and type checks; every phone-state combination was not browser-tested.
 
 ## Integration limits
 

@@ -1,0 +1,52 @@
+@import "@fontsource-variable/manrope/index.css";
+@import "@fontsource-variable/space-grotesk/index.css";
+
+:root {
+  --font-body: "Manrope Variable", sans-serif;
+  --font-display: "Space Grotesk Variable", sans-serif;
+  --brand-pink: #f04494;
+  --brand-pink-strong: #ce246f;
+  --brand-pink-soft: #ffe5f1;
+  --ink: #302433;
+  --muted: #75636f;
+  --surface: #ffffff;
+  --canvas: #fff7fb;
+  --line: #eedfe7;
+  font-family: var(--font-body);
+  color: var(--ink);
+  background: var(--canvas);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+}
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+}
+::selection {
+  background: #ffbedb;
+  color: #302433;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

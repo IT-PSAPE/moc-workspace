@@ -7,3 +7,12 @@ apps/api/data
 playwright-report
 test-results
 .DS_Store
+.shots
+.shots.lock
+.playwright-mcp
+
+.playwright-cli
+output/playwright/
+
+output/reviews/
+reviews/round1/

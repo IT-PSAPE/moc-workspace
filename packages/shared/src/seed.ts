@@ -1,4 +1,4 @@
-import { getService } from "./catalog";
+import { DEPARTMENTS, MINISTRIES, SERVICES, getService } from "./catalog";
 import type {
   Activity,
   Department,
@@ -12,32 +12,40 @@ export const DEMO_LEADERS: Record<Department, Leader> = {
     id: "leader-matthew",
     name: "Matthew Cell0",
     email: "matthew.cell0@example.org",
-    rank: "BJN",
+    duty: "BJN",
     department: "cell-0",
+    groups: ["Cell 0"],
+    isLeader: true,
     approved: true,
   },
   sound: {
     id: "leader-sound",
     name: "Grace Ndlovu",
     email: "grace.sound@example.org",
-    rank: "GJN",
+    duty: "GJN",
     department: "sound",
+    groups: ["Sound"],
+    isLeader: true,
     approved: true,
   },
   design: {
     id: "leader-design",
     name: "Grace Mokoena",
     email: "grace.design@example.org",
-    rank: "GJN",
+    duty: "GJN",
     department: "design",
+    groups: ["Graphic Design", "Art Production"],
+    isLeader: true,
     approved: true,
   },
   "visual-media": {
     id: "leader-visual",
     name: "Grace Dlamini",
     email: "grace.visual@example.org",
-    rank: "GJN",
+    duty: "GJN",
     department: "visual-media",
+    groups: ["Photography", "Video"],
+    isLeader: true,
     approved: true,
   },
 };
@@ -55,13 +63,18 @@ export function createSeedState(): WorkspaceState {
     return date.toISOString();
   };
   const users: Leader[] = [
-    ...Object.values(DEMO_LEADERS).map((leader) => ({ ...leader })),
+    ...Object.values(DEMO_LEADERS).map((leader) => ({
+      ...leader,
+      groups: [...leader.groups],
+    })),
     {
       id: "leader-pending",
       name: "Thabo Nkosi",
       email: "thabo@example.org",
-      rank: "TJN",
+      duty: "TJN",
       department: "design",
+      groups: ["Graphic Design"],
+      isLeader: false,
       approved: false,
     },
   ];
@@ -139,7 +152,6 @@ export function createSeedState(): WorkspaceState {
         department: service.department,
         subTeam: service.subTeam,
         status,
-        priority: (["low", "medium", "high", "urgent"] as const)[index % 4],
         progress,
         dueAt: iso((index % 11) - 3, 10 + (index % 8)),
         createdAt: iso(-((index % 18) + 1)),
@@ -168,7 +180,6 @@ export function createSeedState(): WorkspaceState {
       department: "cell-0",
       subTeam: "Cell 0",
       status: "in-progress",
-      priority: "high",
       progress: 50,
       dueAt: iso(2),
       createdAt: iso(-2),
@@ -277,6 +288,14 @@ export function createSeedState(): WorkspaceState {
     },
   ];
   return {
+    catalog: {
+      ministries: [...MINISTRIES],
+      services: SERVICES.map((service) => ({ ...service })),
+      departments: DEPARTMENTS.map((department) => ({
+        ...department,
+        groups: [...department.groups],
+      })),
+    },
     tasks,
     requests,
     users,

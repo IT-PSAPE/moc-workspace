@@ -1,4 +1,9 @@
-import type { Department, Service, SubTeam } from "./types";
+import type {
+  Department,
+  DepartmentDefinition,
+  Service,
+  SubTeam,
+} from "./types";
 
 export const MINISTRIES = [
   "Administration",
@@ -23,22 +28,20 @@ export const MINISTRIES = [
   "Youth Ministry",
 ].sort((a, b) => a.localeCompare(b));
 
-export const DEPARTMENTS: {
-  id: Department;
-  name: string;
-  groups: SubTeam[];
-}[] = [
-  { id: "cell-0", name: "Cell 0", groups: ["Cell 0"] },
+export const DEPARTMENTS: DepartmentDefinition[] = [
+  { id: "cell-0", name: "Cell 0", groups: ["Cell 0"], color: "pink" },
   {
     id: "design",
     name: "Design",
     groups: ["Graphic Design", "Art Production"],
+    color: "purple",
   },
-  { id: "sound", name: "Sound", groups: ["Sound"] },
+  { id: "sound", name: "Sound", groups: ["Sound"], color: "amber" },
   {
     id: "visual-media",
     name: "Visual Media",
     groups: ["Photography", "Video"],
+    color: "blue",
   },
 ];
 

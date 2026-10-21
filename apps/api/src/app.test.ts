@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApiApp } from "./index";
 import { JsonRepository } from "./repository";
+import { createSeedState } from "@moc/shared";
 
 process.env.DEMO_MODE = "true";
 
@@ -27,6 +28,173 @@ afterEach(async () => {
 });
 
 describe("MOC API", () => {
+  it("persists managed request options and routes pending requests through the current service mapping", async () => {
+    const app = await makeApp();
+    const login = async (department: string) => {
+      const response = await app.request("/api/auth/demo", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:5173",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ department }),
+      });
+      expect(response.status).toBe(200);
+      return response.headers.get("set-cookie")!.split(";")[0];
+    };
+    const action = (cookie: string, payload: unknown) =>
+      app.request("/api/actions", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:5173",
+          "content-type": "application/json",
+          cookie,
+        },
+        body: JSON.stringify(payload),
+      });
+
+    const soundCookie = await login("sound");
+    expect(
+      (await action(soundCookie, {
+        type: "save-ministry",
+        name: "Managed Ministry",
+      })).status,
+    ).toBe(200);
+    expect(
+      (await action(soundCookie, {
+        type: "save-service",
+        service: {
+          id: "managed-service",
+          name: "Managed Service",
+          department: "sound",
+          subTeam: "Sound",
+        },
+      })).status,
+    ).toBe(200);
+
+    const catalogResponse = await app.request("/api/catalog");
+    const catalog = (await catalogResponse.json()) as {
+      ministries: string[];
+      services: Array<{ id: string }>;
+      departments: Array<{ id: string }>;
+    };
+    expect(catalog.ministries).toContain("Managed Ministry");
+    expect(catalog.services.some((service) => service.id === "managed-service")).toBe(true);
+    expect(catalog.departments.map(({ id }) => id)).toContain("cell-0");
+
+    const created = await app.request("/api/requests", {
+      method: "POST",
+      headers: {
+        origin: "http://localhost:5174",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        ministry: "Managed Ministry",
+        service: "managed-service",
+        title: "Managed routing",
+        instructions: "Prepare the requested asset.",
+        notes: "Use the current service route.",
+        dueAt: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+      }),
+    });
+    expect(created.status).toBe(201);
+    const request = (await created.json()) as { request: { id: string } };
+
+    const cell0Cookie = await login("cell-0");
+    expect(
+      (await action(cell0Cookie, {
+        type: "save-service",
+        service: {
+          id: "managed-service",
+          name: "Managed Service",
+          department: "visual-media",
+          subTeam: "Video",
+        },
+      })).status,
+    ).toBe(200);
+    const approved = await action(cell0Cookie, {
+      type: "approve",
+      requestId: request.request.id,
+    });
+    expect(approved.status).toBe(200);
+    const workspace = (await approved.json()) as {
+      tasks: Array<{ requestId?: string; department: string; subTeam: string }>;
+    };
+    expect(workspace.tasks.find((task) => task.requestId === request.request.id)).toMatchObject({
+      department: "visual-media",
+      subTeam: "Video",
+    });
+
+    expect(
+      (await action(cell0Cookie, {
+        type: "delete-service",
+        serviceId: "managed-service",
+      })).status,
+    ).toBe(400);
+  });
+
+  it("returns saved request comments to Cell 0 while excluding them from public tracking", async () => {
+    const app = await makeApp();
+    const created = await app.request("/api/requests", {
+      method: "POST",
+      headers: {
+        origin: "http://localhost:5174",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        ministry: "Youth Ministry",
+        service: "social-content",
+        title: "Comment visibility",
+        instructions: "Prepare a reel.",
+        notes: "Use approved footage.",
+        dueAt: new Date(Date.now() + 86400000 * 7).toISOString(),
+      }),
+    });
+    const receipt = (await created.json()) as {
+      request: { id: string };
+      trackingCode: string;
+    };
+    const login = await app.request("/api/auth/demo", {
+      method: "POST",
+      headers: {
+        origin: "http://localhost:5173",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ department: "cell-0" }),
+    });
+    const cookie = login.headers.get("set-cookie")!.split(";")[0];
+    const saved = await app.request("/api/actions", {
+      method: "POST",
+      headers: {
+        origin: "http://localhost:5173",
+        "content-type": "application/json",
+        cookie,
+      },
+      body: JSON.stringify({
+        type: "add-request-note",
+        requestId: receipt.request.id,
+        text: "Private production discussion.",
+      }),
+    });
+    expect(saved.status).toBe(200);
+    const workspace = (await saved.json()) as {
+      requests: Array<{ id: string; privateNotes?: Array<{ text: string }> }>;
+    };
+    expect(
+      workspace.requests.find((item) => item.id === receipt.request.id)
+        ?.privateNotes?.[0].text,
+    ).toBe("Private production discussion.");
+    const tracking = await app.request("/api/track", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code: receipt.trackingCode }),
+    });
+    expect(tracking.status).toBe(200);
+    expect(
+      ((await tracking.json()) as { request: object }).request,
+    ).not.toHaveProperty("privateNotes");
+  });
+
   it("limits attempts by transport IP, ignoring spoofed forwarding headers", async () => {
     const app = await makeApp({
       resolveRemoteAddress: () => "198.51.100.42",
@@ -80,8 +248,72 @@ describe("MOC API", () => {
     const response = await app.request("/api/workspace");
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({
-      error: "Sign in with an approved leader account to continue.",
+      error: "Sign in with an approved member account to continue.",
     });
+  });
+
+  it("limits Cell 0 members to their own workspace data and department tasks", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "moc-api-"));
+    temporaryDirectories.push(directory);
+    const repository = new JsonRepository(join(directory, "state.json"));
+    const initial = await repository.read();
+    const pendingRequest = initial.requests.find((request) => request.status === "pending")!;
+    const soundTask = initial.tasks.find((task) => task.department === "sound")!;
+    const cell0Leader = initial.users.find((user) => user.department === "cell-0")!;
+    const app = createApiApp(repository);
+    const login = await app.request("/api/auth/demo", {
+      method: "POST",
+      headers: {
+        origin: "http://localhost:5173",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ department: "cell-0" }),
+    });
+    const cookie = login.headers.get("set-cookie")!.split(";")[0];
+    await repository.update((state) => ({
+      ...state,
+      users: state.users.map((user) =>
+        user.id === cell0Leader.id ? { ...user, isLeader: false } : user,
+      ),
+    }));
+
+    const workspaceResponse = await app.request("/api/workspace", {
+      headers: { cookie },
+    });
+    expect(workspaceResponse.status).toBe(200);
+    const workspace = (await workspaceResponse.json()) as {
+      users: Array<{ id: string }>;
+      requests: Array<{ id: string; privateNotes?: unknown }>;
+      tasks: Array<{ department: string }>;
+    };
+    expect(workspace.users).toEqual([{ ...cell0Leader, isLeader: false }]);
+    expect(workspace.tasks.every((task) => task.department === "cell-0")).toBe(true);
+    expect(workspace.requests.some((request) => request.id === pendingRequest.id)).toBe(false);
+    expect(workspace.requests.every((request) => !request.privateNotes)).toBe(true);
+
+    const approve = await app.request("/api/actions", {
+      method: "POST",
+      headers: {
+        origin: "http://localhost:5173",
+        "content-type": "application/json",
+        cookie,
+      },
+      body: JSON.stringify({ type: "approve", requestId: pendingRequest.id }),
+    });
+    expect(approve.status).toBe(400);
+    expect(await approve.json()).toMatchObject({ error: expect.stringMatching(/Cell 0 leader/i) });
+
+    const edit = await app.request("/api/actions", {
+      method: "POST",
+      headers: {
+        origin: "http://localhost:5173",
+        "content-type": "application/json",
+        cookie,
+      },
+      body: JSON.stringify({ type: "update-task", taskId: soundTask.id, progress: 25 }),
+    });
+    expect(edit.status).toBe(400);
+    expect(await edit.json()).toMatchObject({ error: expect.stringMatching(/only edit tasks in your department/i) });
   });
 
   it("creates and tracks requests publicly, while tracking omits private task notes", async () => {
@@ -464,5 +696,57 @@ describe("MOC API", () => {
       body: JSON.stringify({ code: created.trackingCode }),
     });
     expect(await tracking.json()).toMatchObject({ task: null });
+  });
+
+  it("approves requests without task priority and omits it from returned tasks", async () => {
+    const app = await makeApp();
+    const createdResponse = await app.request("/api/requests", {
+      method: "POST",
+      headers: {
+        origin: "http://localhost:5174",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        ministry: "Youth Ministry",
+        service: "social-content",
+        title: "Priority-free request",
+        instructions: "Create a recap reel.",
+        notes: "Use approved footage.",
+        dueAt: new Date(Date.now() + 7 * 86400000).toISOString(),
+      }),
+    });
+    const created = (await createdResponse.json()) as {
+      request: { id: string };
+    };
+    const login = await app.request("/api/auth/demo", {
+      method: "POST",
+      headers: {
+        origin: "http://localhost:5173",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ department: "cell-0" }),
+    });
+    const cookie = login.headers.get("set-cookie")!.split(";")[0];
+    const approved = await app.request("/api/actions", {
+      method: "POST",
+      headers: {
+        origin: "http://localhost:5173",
+        "content-type": "application/json",
+        cookie,
+      },
+      body: JSON.stringify({
+        type: "approve",
+        requestId: created.request.id,
+      }),
+    });
+    expect(approved.status).toBe(200);
+    const workspace = (await approved.json()) as {
+      tasks: Array<{ requestId?: string }>;
+    };
+    const task = workspace.tasks.find(
+      (item) => item.requestId === created.request.id,
+    );
+    expect(task).toBeDefined();
+    expect(task).not.toHaveProperty("priority");
   });
 });

@@ -1,22 +1,37 @@
-export type Department = "cell-0" | "sound" | "visual-media" | "design";
-export type SubTeam =
-  | "Photography"
-  | "Video"
-  | "Graphic Design"
-  | "Art Production"
-  | "Sound"
-  | "Cell 0";
+export type Department = string;
+export type SubTeam = string;
+export type DepartmentColor =
+  | "pink"
+  | "purple"
+  | "amber"
+  | "blue"
+  | "green"
+  | "teal";
+export interface DepartmentDefinition {
+  id: Department;
+  name: string;
+  groups: SubTeam[];
+  color: DepartmentColor;
+}
 export type TaskStatus = "pending" | "in-progress" | "completed";
-export type Priority = "low" | "medium" | "high" | "urgent";
 export type Progress = 0 | 25 | 50 | 75 | 100;
 export type ApprovalStatus = "pending" | "approved" | "rejected";
-export interface Leader {
+export interface Member {
   id: string;
   name: string;
   email: string;
-  rank: "BJN" | "CMN" | "SMN" | "GJN" | "TJN";
+  duty: string;
   department: Department;
+  groups: SubTeam[];
+  isLeader: boolean;
   approved: boolean;
+  invitedAt?: string;
+}
+export type Leader = Member;
+export interface Catalog {
+  ministries: string[];
+  services: Service[];
+  departments: DepartmentDefinition[];
 }
 export interface RequestInput {
   ministry: string;
@@ -35,6 +50,7 @@ export interface MinistryRequest extends RequestInput {
   updatedAt: string;
   rejectionReason?: string;
   taskId?: string;
+  privateNotes?: Task["privateNotes"];
   /** SHA-256 digest of the issued public tracking credential. */
   trackingCodeHash?: string;
 }
@@ -49,7 +65,6 @@ export interface Task {
   department: Department;
   subTeam: SubTeam;
   status: TaskStatus;
-  priority: Priority;
   progress: Progress;
   dueAt: string;
   createdAt: string;
@@ -85,6 +100,7 @@ export interface Notification {
   department: Department;
 }
 export interface WorkspaceState {
+  catalog: Catalog;
   tasks: Task[];
   requests: MinistryRequest[];
   users: Leader[];
@@ -109,7 +125,10 @@ export interface PublicTracking {
     "status" | "progress" | "department" | "subTeam" | "completedAt"
   > | null;
 }
-export type PublicRequest = Omit<MinistryRequest, "trackingCodeHash">;
+export type PublicRequest = Omit<
+  MinistryRequest,
+  "trackingCodeHash" | "privateNotes"
+>;
 export interface SubmissionReceipt {
   request: PublicRequest;
   trackingCode: string;
@@ -118,7 +137,6 @@ export interface InternalTaskInput {
   title: string;
   department: Department;
   subTeam: SubTeam;
-  priority: Priority;
   dueAt: string;
   instructions: string;
   notes: string;
@@ -126,17 +144,51 @@ export interface InternalTaskInput {
   service?: string;
 }
 export type WorkspaceAction =
-  | { type: "approve"; requestId: string; priority: Priority }
+  | { type: "approve"; requestId: string }
   | { type: "reject"; requestId: string; reason: string }
   | {
       type: "update-task";
       taskId: string;
       progress?: Progress;
       status?: TaskStatus;
-      priority?: Priority;
     }
   | { type: "add-note"; taskId: string; text: string }
+  | { type: "add-request-note"; requestId: string; text: string }
   | { type: "create-task"; input: InternalTaskInput }
-  | { type: "add-user"; input: Omit<Leader, "id"> }
-  | { type: "update-user"; userId: string; approved: boolean }
+  | { type: "save-ministry"; name: string; previousName?: string }
+  | { type: "delete-ministry"; name: string }
+  | { type: "save-service"; service: Service }
+  | { type: "delete-service"; serviceId: string }
+  | {
+      type: "save-department";
+      department: DepartmentDefinition;
+      groupRenames?: Record<string, string>;
+    }
+  | { type: "delete-department"; departmentId: string }
+  | {
+      type: "invite-member";
+      input: {
+        name: string;
+        email: string;
+        duty: string;
+        department: Department;
+        groups: SubTeam[];
+        isLeader: boolean;
+      };
+    }
+  | {
+      type: "update-member";
+      userId: string;
+      changes: Partial<
+        Pick<
+          Member,
+          | "name"
+          | "duty"
+          | "department"
+          | "groups"
+          | "isLeader"
+          | "approved"
+        >
+      >;
+    }
   | { type: "read-notifications" };

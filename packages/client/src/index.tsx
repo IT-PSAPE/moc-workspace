@@ -56,6 +56,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
   );
 }
 const empty: WorkspaceState = {
+  catalog: { ministries: [], services: [], departments: [] },
   tasks: [],
   requests: [],
   users: [],
@@ -104,7 +105,10 @@ export function useWorkspace() {
         throw error;
       }
     },
-    enabled: !!session?.user,
+    enabled: !!session?.user?.approved,
+    // A page mounting after the shell's initial failure must not restart the
+    // same failed request and replace the recovery UI with another loader.
+    retryOnMount: false,
     refetchInterval: 15000,
   });
   const user = session?.user as Leader;
@@ -124,6 +128,11 @@ export function useWorkspace() {
       result = await send();
     }
     client.setQueryData(["workspace", user.id], result);
+    const updatedMember = result.users.find((member) => member.id === user.id);
+    if (updatedMember)
+      client.setQueryData<Session>(["session"], (current) =>
+        current ? { ...current, user: updatedMember } : current,
+      );
   }
   async function switchDepartment(department: Department) {
     const result = await api<Session>("/api/auth/demo", {
@@ -142,7 +151,8 @@ export function useWorkspace() {
     state: query.data || empty,
     user,
     demo: session?.demo || false,
-    loading: sessionLoading || query.isPending,
+    loading: sessionLoading || query.isLoading,
+    initialError: query.isError && !query.data,
     error: query.error?.message,
     act,
     refresh: async () => {

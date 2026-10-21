@@ -1,8 +1,11 @@
-import { DEPARTMENTS, getService, isDepartment, MINISTRIES } from "./catalog";
 import type {
   Activity,
+  Catalog,
+  DepartmentColor,
+  DepartmentDefinition,
   InternalTaskInput,
   Leader,
+  Member,
   MinistryRequest,
   PublicTracking,
   PublicRequest,
@@ -16,9 +19,15 @@ const nowIso = () => new Date().toISOString();
 const makeId = (prefix: string) =>
   `${prefix}-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`}`;
 const isCell0 = (user: Leader) => user.department === "cell-0";
+const isLeader = (user: Leader) => user.approved && user.isLeader;
+const isCell0Leader = (user: Leader) => isCell0(user) && isLeader(user);
 const requireCell0 = (user: Leader, action: string) => {
-  if (!isCell0(user) || !user.approved)
-    throw new Error(`Only an approved Cell 0 user can ${action}.`);
+  if (!isCell0(user) || !isLeader(user))
+    throw new Error(`Only an approved Cell 0 leader can ${action}.`);
+};
+const requireLeader = (user: Leader, action: string) => {
+  if (!isLeader(user))
+    throw new Error(`Only an approved leader can ${action}.`);
 };
 const requireApproved = (state: WorkspaceState, user: Leader): Leader => {
   const current = state.users.find((candidate) => candidate.id === user.id);
@@ -26,9 +35,9 @@ const requireApproved = (state: WorkspaceState, user: Leader): Leader => {
     !user.approved ||
     !current?.approved ||
     current.department !== user.department ||
-    current.rank !== user.rank
+    current.duty !== user.duty
   ) {
-    throw new Error("Your leader access has not been approved.");
+    throw new Error("Your member access has not been approved.");
   }
   return current;
 };
@@ -77,21 +86,52 @@ function isValidDueDate(value: string): boolean {
   return true;
 }
 
-function validLeaderRole(
-  rank: Leader["rank"],
-  department: Leader["department"],
-): boolean {
-  return department === "cell-0"
-    ? ["BJN", "CMN", "SMN"].includes(rank)
-    : ["GJN", "TJN"].includes(rank);
-}
-
 const isOneOf = <T>(value: unknown, values: readonly T[]): value is T =>
   values.includes(value as T);
-const ranks = ["BJN", "CMN", "SMN", "GJN", "TJN"] as const;
-const priorities = ["low", "medium", "high", "urgent"] as const;
+const isStableCatalogId = (value: string) => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
+const departmentColors: readonly DepartmentColor[] = [
+  "pink",
+  "purple",
+  "amber",
+  "blue",
+  "green",
+  "teal",
+];
 const progressValues = [0, 25, 50, 75, 100] as const;
 const taskStatuses = ["pending", "in-progress", "completed"] as const;
+
+function normalizedName(value: string): string {
+  return value.trim().toLocaleLowerCase();
+}
+
+function departmentFromCatalog(
+  catalog: Catalog,
+  department: unknown,
+): DepartmentDefinition | undefined {
+  return typeof department === "string"
+    ? catalog.departments.find((item) => item.id === department)
+    : undefined;
+}
+
+function requireValidGroups(
+  catalog: Catalog,
+  department: unknown,
+  groups: unknown,
+): asserts groups is string[] {
+  const definition = departmentFromCatalog(catalog, department);
+  if (!definition) throw new Error("Choose a valid department.");
+  if (
+    !Array.isArray(groups) ||
+    groups.length === 0 ||
+    groups.some(
+      (group) =>
+        typeof group !== "string" || !definition.groups.includes(group),
+    )
+  )
+    throw new Error("Choose one or more groups from the selected department.");
+  if (new Set(groups.map(normalizedName)).size !== groups.length)
+    throw new Error("A group can only be selected once.");
+}
 
 function requireNonEmptyString(
   value: unknown,
@@ -101,8 +141,16 @@ function requireNonEmptyString(
     throw new Error(`${field} is required.`);
 }
 
+function withoutLegacyTaskPriority(task: Task): Task {
+  const { priority: _priority, ...currentTask } = task as Task & {
+    priority?: unknown;
+  };
+  return currentTask;
+}
+
 function validateInternalTaskInput(
   input: unknown,
+  catalog: Catalog,
 ): asserts input is InternalTaskInput {
   if (!input || typeof input !== "object")
     throw new Error("Internal task details are required.");
@@ -110,46 +158,152 @@ function validateInternalTaskInput(
   requireNonEmptyString(value.title, "Task title");
   requireNonEmptyString(value.instructions, "Task instructions");
   requireNonEmptyString(value.notes, "Task notes");
-  if (!isDepartment(value.department))
-    throw new Error("Choose a valid task department.");
-  const groups = DEPARTMENTS.find(
-    (department) => department.id === value.department,
-  )?.groups;
-  if (!isOneOf(value.subTeam, groups ?? []))
-    throw new Error("The selected group does not belong to that department.");
-  if (!isOneOf(value.priority, priorities))
-    throw new Error("Choose a valid task priority.");
+  requireValidGroups(catalog, value.department, [value.subTeam]);
   if (typeof value.dueAt !== "string" || !isValidDueDate(value.dueAt))
     throw new Error("A valid task due date is required.");
   for (const field of ["ministry", "service"] as const) {
     if (value[field] !== undefined && typeof value[field] !== "string")
       throw new Error(`Task ${field} must be text.`);
   }
+  if (typeof value.ministry === "string" && value.ministry && !catalog.ministries.includes(value.ministry))
+    throw new Error("Choose a ministry from the ministry list.");
+  if (value.service && value.service !== "internal") {
+    const service = catalog.services.find((item) => item.id === value.service);
+    if (
+      !service ||
+      service.department !== value.department ||
+      service.subTeam !== value.subTeam
+    )
+      throw new Error("Choose a service mapped to the selected department and group.");
+  }
 }
 
-function validateNewLeaderInput(input: unknown): void {
+function validateNewMemberInput(input: unknown, catalog: Catalog): void {
   if (!input || typeof input !== "object")
-    throw new Error("Leader details are required.");
+    throw new Error("Member details are required.");
   const value = input as Record<string, unknown>;
-  requireNonEmptyString(value.name, "Leader name");
-  requireNonEmptyString(value.email, "Leader email");
+  requireNonEmptyString(value.name, "Member name");
+  requireNonEmptyString(value.email, "Member email");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.email.trim()))
-    throw new Error("Enter a valid leader email address.");
-  if (!isDepartment(value.department))
-    throw new Error("Choose a valid leader department.");
-  if (!isOneOf(value.rank, ranks))
-    throw new Error("Choose a valid leader rank.");
-  if (typeof value.approved !== "boolean")
-    throw new Error("Leader approval must be true or false.");
-  if (!validLeaderRole(value.rank, value.department))
-    throw new Error(
-      "Leader rank does not match the selected department. Cell 0 uses BJN, CMN, or SMN; production departments use GJN or TJN.",
-    );
+    throw new Error("Enter a valid member email address.");
+  requireNonEmptyString(value.duty, "Member duty");
+  if (typeof value.isLeader !== "boolean")
+    throw new Error("Choose whether the member is a leader.");
+  requireValidGroups(catalog, value.department, value.groups);
+}
+
+function validateDepartmentInput(input: unknown): void {
+  if (!input || typeof input !== "object" || Array.isArray(input))
+    throw new Error("Department details are required.");
+  const value = input as Record<string, unknown>;
+  requireNonEmptyString(value.id, "Department ID");
+  if (!isStableCatalogId(value.id.trim()))
+    throw new Error("Department ID must use lowercase letters, numbers, and hyphens.");
+  requireNonEmptyString(value.name, "Department name");
+  requireNonEmptyString(value.color, "Department color");
+  if (!isOneOf(value.color, departmentColors))
+    throw new Error("Choose a valid department color.");
+  if (
+    !Array.isArray(value.groups) ||
+    value.groups.length === 0 ||
+    value.groups.some((group) => typeof group !== "string" || !group.trim())
+  )
+    throw new Error("Add at least one department group.");
+  if (new Set(value.groups.map(normalizedName)).size !== value.groups.length)
+    throw new Error("Department group names must be unique.");
+}
+
+function validateGroupRenames(
+  groupRenames: unknown,
+  department: DepartmentDefinition,
+  existing: DepartmentDefinition | undefined,
+): Record<string, string> {
+  if (groupRenames === undefined) return {};
+  if (!groupRenames || typeof groupRenames !== "object" || Array.isArray(groupRenames))
+    throw new Error("Department group renames must be a mapping.");
+  const renames = groupRenames as Record<string, unknown>;
+  const entries = Object.entries(renames);
+  if (!existing && entries.length > 0)
+    throw new Error("New departments cannot rename existing groups.");
+  const sourceKeys = new Set<string>();
+  const destinations = new Set<string>();
+  for (const [source, destination] of entries) {
+    requireNonEmptyString(source, "Original group name");
+    requireNonEmptyString(destination, "New group name");
+    const sourceKey = normalizedName(source);
+    const destinationName = destination.trim();
+    const destinationKey = normalizedName(destinationName);
+    if (sourceKeys.has(sourceKey))
+      throw new Error("A group can only be renamed once.");
+    if (destinations.has(destinationKey))
+      throw new Error("Group renames cannot target the same group.");
+    if (!existing?.groups.includes(source))
+      throw new Error("The original group to rename was not found.");
+    if (source === destinationName)
+      throw new Error("A group rename must use a different name.");
+    if (!department.groups.some((group) => normalizedName(group) === destinationKey))
+      throw new Error("Each renamed group must appear in the saved department groups.");
+    sourceKeys.add(sourceKey);
+    destinations.add(destinationKey);
+  }
+  const unchanged = existing?.groups
+    .filter((group) => !sourceKeys.has(normalizedName(group)))
+    .map(normalizedName) ?? [];
+  if (entries.some(([, destination]) => unchanged.includes(normalizedName(destination as string))))
+    throw new Error("Group renames cannot merge into another existing group.");
+  const exactDestinations = Object.create(null) as Record<string, string>;
+  for (const [source, destination] of entries) {
+    const key = normalizedName(destination as string);
+    exactDestinations[source] = department.groups.find(
+      (group) => normalizedName(group) === key,
+    )!;
+  }
+  return exactDestinations;
+}
+
+function validateServiceInput(input: unknown, catalog: Catalog): void {
+  if (!input || typeof input !== "object" || Array.isArray(input))
+    throw new Error("Service details are required.");
+  const value = input as Record<string, unknown>;
+  requireNonEmptyString(value.id, "Service ID");
+  if (!isStableCatalogId(value.id.trim()))
+    throw new Error("Service ID must use lowercase letters, numbers, and hyphens.");
+  requireNonEmptyString(value.name, "Service name");
+  requireValidGroups(catalog, value.department, [value.subTeam]);
+  if (
+    value.requiresAiredDates !== undefined &&
+    typeof value.requiresAiredDates !== "boolean"
+  )
+    throw new Error("Aired date requirement must be true or false.");
+}
+
+function validateMemberChanges(changes: unknown, catalog: Catalog): void {
+  if (!changes || typeof changes !== "object" || Array.isArray(changes))
+    throw new Error("Member changes are required.");
+  const value = changes as Record<string, unknown>;
+  const allowed = ["name", "duty", "department", "groups", "isLeader", "approved"];
+  if (Object.keys(value).some((field) => !allowed.includes(field)))
+    throw new Error("Email and unknown member fields cannot be changed.");
+  if (Object.keys(value).length === 0)
+    throw new Error("Choose at least one member field to change.");
+  for (const field of ["name", "duty"] as const)
+    if (value[field] !== undefined) requireNonEmptyString(value[field], field);
+  if (value.department !== undefined && typeof value.department !== "string")
+    throw new Error("Choose a valid department.");
+  if (value.groups !== undefined && !Array.isArray(value.groups))
+    throw new Error("Choose one or more groups from the selected department.");
+  if (value.isLeader !== undefined && typeof value.isLeader !== "boolean")
+    throw new Error("Leader status must be true or false.");
+  if (value.approved !== undefined && typeof value.approved !== "boolean")
+    throw new Error("Member access must be true or false.");
+  if (value.department !== undefined && value.groups !== undefined)
+    requireValidGroups(catalog, value.department, value.groups);
 }
 
 /** Validate an untrusted action payload before it reaches domain state. */
 export function validateWorkspaceAction(
   action: unknown,
+  catalog?: Catalog,
 ): asserts action is WorkspaceAction {
   if (!action || typeof action !== "object" || Array.isArray(action))
     throw new Error("A workspace action is required.");
@@ -157,8 +311,6 @@ export function validateWorkspaceAction(
   switch (value.type) {
     case "approve":
       requireNonEmptyString(value.requestId, "Request ID");
-      if (!isOneOf(value.priority, priorities))
-        throw new Error("Choose a valid request priority.");
       return;
     case "reject":
       requireNonEmptyString(value.requestId, "Request ID");
@@ -168,8 +320,7 @@ export function validateWorkspaceAction(
       requireNonEmptyString(value.taskId, "Task ID");
       if (
         value.progress === undefined &&
-        value.status === undefined &&
-        value.priority === undefined
+        value.status === undefined
       )
         throw new Error("Provide a task field to update.");
       if (
@@ -179,24 +330,60 @@ export function validateWorkspaceAction(
         throw new Error("Progress must be 0, 25, 50, 75, or 100.");
       if (value.status !== undefined && !isOneOf(value.status, taskStatuses))
         throw new Error("Choose a valid task status.");
-      if (value.priority !== undefined && !isOneOf(value.priority, priorities))
-        throw new Error("Choose a valid task priority.");
       return;
     }
     case "add-note":
       requireNonEmptyString(value.taskId, "Task ID");
       requireNonEmptyString(value.text, "A note");
       return;
+    case "add-request-note":
+      requireNonEmptyString(value.requestId, "Request ID");
+      requireNonEmptyString(value.text, "A comment");
+      return;
     case "create-task":
-      validateInternalTaskInput(value.input);
+      if (catalog) validateInternalTaskInput(value.input, catalog);
+      else if (!value.input || typeof value.input !== "object")
+        throw new Error("Internal task details are required.");
       return;
-    case "add-user":
-      validateNewLeaderInput(value.input);
+    case "save-ministry":
+      requireNonEmptyString(value.name, "Ministry name");
+      if (value.previousName !== undefined)
+        requireNonEmptyString(value.previousName, "Previous ministry name");
       return;
-    case "update-user":
-      requireNonEmptyString(value.userId, "Leader ID");
-      if (typeof value.approved !== "boolean")
-        throw new Error("Leader approval must be true or false.");
+    case "delete-ministry":
+      requireNonEmptyString(value.name, "Ministry name");
+      return;
+    case "save-service":
+      if (catalog) validateServiceInput(value.service, catalog);
+      else if (!value.service || typeof value.service !== "object")
+        throw new Error("Service details are required.");
+      return;
+    case "delete-service":
+      requireNonEmptyString(value.serviceId, "Service ID");
+      return;
+    case "save-department":
+      if (catalog) {
+        validateDepartmentInput(value.department);
+        const department = value.department as DepartmentDefinition;
+        const existing = catalog.departments.find((item) => item.id === department.id);
+        validateGroupRenames(value.groupRenames, department, existing);
+      }
+      else if (!value.department || typeof value.department !== "object")
+        throw new Error("Department details are required.");
+      return;
+    case "delete-department":
+      requireNonEmptyString(value.departmentId, "Department ID");
+      return;
+    case "invite-member":
+      if (catalog) validateNewMemberInput(value.input, catalog);
+      else if (!value.input || typeof value.input !== "object")
+        throw new Error("Member details are required.");
+      return;
+    case "update-member":
+      requireNonEmptyString(value.userId, "Member ID");
+      if (catalog) validateMemberChanges(value.changes, catalog);
+      else if (!value.changes || typeof value.changes !== "object")
+        throw new Error("Member changes are required.");
       return;
     case "read-notifications":
       return;
@@ -205,13 +392,15 @@ export function validateWorkspaceAction(
   }
 }
 
-export function validateRequest(input: RequestInput): void {
+export function validateRequest(input: RequestInput, catalog: Catalog): void {
   if (!input || typeof input !== "object")
     throw new Error("Request details are required.");
-  if (!MINISTRIES.includes(input.ministry))
+  if (!catalog.ministries.includes(input.ministry))
     throw new Error("Choose a ministry from the ministry list.");
   const service =
-    typeof input.service === "string" ? getService(input.service) : undefined;
+    typeof input.service === "string"
+      ? catalog.services.find((item) => item.id === input.service)
+      : undefined;
   if (!service) throw new Error("Choose a valid service.");
   if (!input.title?.trim()) throw new Error("A request title is required.");
   if (!input.instructions?.trim())
@@ -320,7 +509,7 @@ export function createRequest(
   state: WorkspaceState,
   input: RequestInput,
 ): { state: WorkspaceState; request: MinistryRequest } {
-  validateRequest(input);
+  validateRequest(input, state.catalog);
   const createdAt = nowIso();
   const request: MinistryRequest = {
     ...copyRequestInput(input),
@@ -361,7 +550,7 @@ export function updatePublicRequest(
   if (!existing) throw new Error("Request was not found.");
   if (existing.status !== "pending")
     throw new Error("Only pending requests can be edited.");
-  validateRequest(input);
+  validateRequest(input, state.catalog);
   const request: MinistryRequest = {
     ...copyRequestInput(input),
     id: existing.id,
@@ -369,6 +558,7 @@ export function updatePublicRequest(
     status: existing.status,
     createdAt: existing.createdAt,
     updatedAt: nowIso(),
+    ...(existing.privateNotes ? { privateNotes: existing.privateNotes } : {}),
     ...(existing.trackingCodeHash
       ? { trackingCodeHash: existing.trackingCodeHash }
       : {}),
@@ -420,17 +610,19 @@ export function publicProjection(
   };
 }
 
-/** Remove the credential digest before any request crosses a public boundary. */
+/** Remove private data before any request crosses a public boundary. */
 export function publicRequest(request: MinistryRequest): PublicRequest {
-  const { trackingCodeHash: _trackingCodeHash, ...safeRequest } = request;
+  const {
+    trackingCodeHash: _trackingCodeHash,
+    privateNotes: _privateNotes,
+    ...safeRequest
+  } = request;
   return safeRequest;
 }
 
-function makeRequestTask(
-  request: MinistryRequest,
-  priority: Task["priority"],
-): Task {
-  const service = getService(request.service)!;
+function makeRequestTask(request: MinistryRequest, catalog: Catalog): Task {
+  const service = catalog.services.find((item) => item.id === request.service);
+  if (!service) throw new Error("The request service is no longer available.");
   const createdAt = nowIso();
   return {
     id: makeId("task"),
@@ -443,34 +635,27 @@ function makeRequestTask(
     department: service.department,
     subTeam: service.subTeam,
     status: "pending",
-    priority,
     progress: 0,
     dueAt: request.dueAt,
     createdAt,
-    privateNotes: [],
+    privateNotes: [...(request.privateNotes ?? [])],
   };
 }
 
-function makeInternalTask(input: InternalTaskInput): Task {
-  validateInternalTaskInput(input);
-  if (input.department === "cell-0" && input.subTeam !== "Cell 0")
-    throw new Error("Cell 0 tasks must use the Cell 0 group.");
-  const group = DEPARTMENTS.find(
-    (department) => department.id === input.department,
-  )?.groups;
-  if (!group?.includes(input.subTeam))
-    throw new Error("The selected group does not belong to that department.");
+function makeInternalTask(input: InternalTaskInput, catalog: Catalog): Task {
+  validateInternalTaskInput(input, catalog);
   if (!isValidDueDate(input.dueAt))
     throw new Error("A valid task due date is required.");
+  const ministry = input.ministry?.trim() || catalog.ministries[0];
+  if (!ministry) throw new Error("Add a ministry before creating tasks.");
   return {
     title: input.title.trim(),
-    ministry: input.ministry?.trim() || "Administration",
+    ministry,
     service: input.service?.trim() || "internal",
     instructions: input.instructions.trim(),
     notes: input.notes.trim(),
     department: input.department,
     subTeam: input.subTeam,
-    priority: input.priority,
     dueAt: input.dueAt,
     id: makeId("task"),
     status: "pending",
@@ -480,12 +665,314 @@ function makeInternalTask(input: InternalTaskInput): Task {
   };
 }
 
+function saveMinistry(
+  state: WorkspaceState,
+  name: string,
+  previousName?: string,
+): WorkspaceState {
+  const nextName = name.trim();
+  const previous = previousName
+    ? state.catalog.ministries.find(
+        (item) => normalizedName(item) === normalizedName(previousName),
+      )
+    : undefined;
+  if (previousName && !previous)
+    throw new Error("The ministry to rename was not found.");
+  if (
+    state.catalog.ministries.some(
+      (item) =>
+        normalizedName(item) === normalizedName(nextName) && item !== previous,
+    )
+  )
+    throw new Error("A ministry with that name already exists.");
+  const ministries = previous
+    ? state.catalog.ministries.map((item) => (item === previous ? nextName : item))
+    : [...state.catalog.ministries, nextName];
+  if (!previous)
+    return { ...state, catalog: { ...state.catalog, ministries } };
+  const previousKey = normalizedName(previous);
+  return {
+    ...state,
+    catalog: { ...state.catalog, ministries },
+    requests: state.requests.map((request) =>
+      normalizedName(request.ministry) === previousKey
+        ? { ...request, ministry: nextName }
+        : request,
+    ),
+    tasks: state.tasks.map((task) =>
+      normalizedName(task.ministry) === previousKey
+        ? { ...withoutLegacyTaskPriority(task), ministry: nextName }
+        : task,
+    ),
+  };
+}
+
+function deleteMinistry(state: WorkspaceState, name: string): WorkspaceState {
+  const ministry = state.catalog.ministries.find(
+    (item) => normalizedName(item) === normalizedName(name),
+  );
+  if (!ministry) throw new Error("The ministry was not found.");
+  const key = normalizedName(ministry);
+  if (
+    state.requests.some((request) => normalizedName(request.ministry) === key) ||
+    state.tasks.some((task) => normalizedName(task.ministry) === key)
+  )
+    throw new Error("This ministry is in use by a request or task and cannot be deleted.");
+  if (state.catalog.ministries.length === 1)
+    throw new Error("At least one ministry must remain available.");
+  return {
+    ...state,
+    catalog: {
+      ...state.catalog,
+      ministries: state.catalog.ministries.filter((item) => item !== ministry),
+    },
+  };
+}
+
+function saveService(state: WorkspaceState, input: unknown): WorkspaceState {
+  validateServiceInput(input, state.catalog);
+  const service = input as Catalog["services"][number];
+  const normalized = { ...service, id: service.id.trim(), name: service.name.trim() };
+  const existing = state.catalog.services.find((item) => item.id === normalized.id);
+  if (
+    state.catalog.services.some(
+      (item) =>
+        item.id !== normalized.id &&
+        normalizedName(item.name) === normalizedName(normalized.name),
+    )
+  )
+    throw new Error("A service with that name already exists.");
+  const services = existing
+    ? state.catalog.services.map((item) =>
+        item.id === existing.id ? normalized : item,
+      )
+    : [...state.catalog.services, normalized];
+  return { ...state, catalog: { ...state.catalog, services } };
+}
+
+function deleteService(state: WorkspaceState, serviceId: string): WorkspaceState {
+  const service = state.catalog.services.find((item) => item.id === serviceId);
+  if (!service) throw new Error("The service was not found.");
+  if (
+    state.requests.some((request) => request.service === serviceId) ||
+    state.tasks.some((task) => task.service === serviceId)
+  )
+    throw new Error("This service is in use by a request or task and cannot be deleted.");
+  return {
+    ...state,
+    catalog: {
+      ...state.catalog,
+      services: state.catalog.services.filter((item) => item.id !== serviceId),
+    },
+  };
+}
+
+function saveDepartment(
+  state: WorkspaceState,
+  input: unknown,
+  groupRenames?: Record<string, string>,
+): WorkspaceState {
+  validateDepartmentInput(input);
+  const value = input as DepartmentDefinition;
+  const department: DepartmentDefinition = {
+    ...value,
+    id: value.id.trim(),
+    name: value.name.trim(),
+    groups: value.groups.map((group) => group.trim()),
+  };
+  const existing = state.catalog.departments.find(
+    (item) => item.id === department.id,
+  );
+  const renames = validateGroupRenames(groupRenames, department, existing);
+  if (
+    state.catalog.departments.some(
+      (item) =>
+        item.id !== department.id &&
+        normalizedName(item.name) === normalizedName(department.name),
+    )
+  )
+    throw new Error("A department with that name already exists.");
+  if (!existing && department.id === "cell-0")
+    throw new Error("Cell 0 keeps its reserved department ID.");
+  if (existing) {
+    const removedGroups = existing.groups.filter(
+      (group) =>
+        !renames[group] &&
+        !department.groups.includes(group),
+    );
+    const referenced =
+      state.users.some(
+        (member) =>
+          member.department === department.id &&
+          member.groups.some((group) => removedGroups.includes(group)),
+      ) ||
+      state.tasks.some(
+        (task) =>
+          task.department === department.id &&
+          removedGroups.includes(task.subTeam),
+      ) ||
+      state.catalog.services.some(
+        (service) =>
+          service.department === department.id &&
+          removedGroups.includes(service.subTeam),
+      );
+    if (referenced)
+      throw new Error("Reassign members, services, and tasks before removing a referenced group.");
+  }
+  const departments = existing
+    ? state.catalog.departments.map((item) =>
+        item.id === existing.id ? department : item,
+      )
+    : [...state.catalog.departments, department];
+  const renamedUsers = Object.keys(renames).length
+    ? state.users.map((member) =>
+        member.department === department.id
+          ? {
+              ...member,
+              groups: member.groups.map((group) => renames[group] ?? group),
+            }
+          : member,
+      )
+    : state.users;
+  const renamedServices = Object.keys(renames).length
+    ? state.catalog.services.map((service) =>
+        service.department === department.id
+          ? { ...service, subTeam: renames[service.subTeam] ?? service.subTeam }
+          : service,
+      )
+    : state.catalog.services;
+  const renamedTasks = Object.keys(renames).length
+    ? state.tasks.map((task) =>
+        task.department === department.id
+          ? {
+              ...withoutLegacyTaskPriority(task),
+              subTeam: renames[task.subTeam] ?? task.subTeam,
+            }
+          : task,
+      )
+    : state.tasks;
+  return {
+    ...state,
+    catalog: { ...state.catalog, departments, services: renamedServices },
+    users: renamedUsers,
+    tasks: renamedTasks,
+  };
+}
+
+function deleteDepartment(
+  state: WorkspaceState,
+  departmentId: string,
+): WorkspaceState {
+  if (departmentId === "cell-0")
+    throw new Error("The Cell 0 department cannot be deleted.");
+  const department = state.catalog.departments.find(
+    (item) => item.id === departmentId,
+  );
+  if (!department) throw new Error("The department was not found.");
+  if (
+    state.users.some((member) => member.department === departmentId) ||
+    state.tasks.some((task) => task.department === departmentId) ||
+    state.catalog.services.some((service) => service.department === departmentId)
+  )
+    throw new Error("Reassign members, services, and tasks before deleting this department.");
+  return {
+    ...state,
+    catalog: {
+      ...state.catalog,
+      departments: state.catalog.departments.filter(
+        (item) => item.id !== departmentId,
+      ),
+    },
+  };
+}
+
+function inviteMember(state: WorkspaceState, input: unknown): WorkspaceState {
+  validateNewMemberInput(input, state.catalog);
+  const value = input as {
+    name: string;
+    email: string;
+    duty: string;
+    department: string;
+    groups: string[];
+    isLeader: boolean;
+  };
+  const email = value.email.trim().toLowerCase();
+  if (state.users.some((member) => normalizedName(member.email) === email))
+    throw new Error("A member with that email already exists.");
+  const member: Member = {
+    id: makeId("member"),
+    name: value.name.trim(),
+    email,
+    duty: value.duty.trim(),
+    department: value.department,
+    groups: [...value.groups],
+    isLeader: value.isLeader,
+    approved: true,
+    invitedAt: nowIso(),
+  };
+  return {
+    ...state,
+    users: [...state.users, member],
+    activities: appendActivity(
+      state,
+      `Invitation ready to share for ${member.name}.`,
+      member.department,
+      "access",
+    ),
+  };
+}
+
+function updateMember(
+  state: WorkspaceState,
+  user: Leader,
+  userId: string,
+  changes: unknown,
+): WorkspaceState {
+  validateMemberChanges(changes, state.catalog);
+  const target = state.users.find((member) => member.id === userId);
+  if (!target) throw new Error("The member was not found.");
+  const value = changes as Partial<
+    Pick<Member, "name" | "duty" | "department" | "groups" | "isLeader" | "approved">
+  >;
+  const department = value.department ?? target.department;
+  const groups = value.groups ?? target.groups;
+  requireValidGroups(state.catalog, department, groups);
+  if (
+    target.id === user.id &&
+    (value.approved === false ||
+      value.isLeader === false ||
+      department !== "cell-0")
+  )
+    throw new Error("You cannot revoke, demote, or move your own Cell 0 admin account.");
+  const updated: Member = {
+    ...target,
+    ...(value.name !== undefined ? { name: value.name.trim() } : {}),
+    ...(value.duty !== undefined ? { duty: value.duty.trim() } : {}),
+    department,
+    groups: [...groups],
+    ...(value.isLeader !== undefined ? { isLeader: value.isLeader } : {}),
+    ...(value.approved !== undefined ? { approved: value.approved } : {}),
+  };
+  return {
+    ...state,
+    users: state.users.map((member) =>
+      member.id === target.id ? updated : member,
+    ),
+    activities: appendActivity(
+      state,
+      `Member access updated for ${target.name}.`,
+      target.department,
+      "access",
+    ),
+  };
+}
+
 export function applyAction(
   state: WorkspaceState,
   user: Leader,
   action: WorkspaceAction,
 ): WorkspaceState {
-  validateWorkspaceAction(action);
+  validateWorkspaceAction(action, state.catalog);
   user = requireApproved(state, user);
   switch (action.type) {
     case "approve": {
@@ -496,7 +983,7 @@ export function applyAction(
       if (!request) throw new Error("Request was not found.");
       if (request.status !== "pending")
         throw new Error("Only pending requests can be approved.");
-      const task = makeRequestTask(request, action.priority);
+      const task = makeRequestTask(request, state.catalog);
       const updated = {
         ...request,
         status: "approved" as const,
@@ -552,7 +1039,7 @@ export function applyAction(
     case "update-task": {
       const task = state.tasks.find((item) => item.id === action.taskId);
       if (!task) throw new Error("Task was not found.");
-      if (!isCell0(user) && task.department !== user.department)
+      if (!isCell0Leader(user) && task.department !== user.department)
         throw new Error("You can only edit tasks in your department.");
       let progress = action.progress ?? task.progress;
       let status = action.status ?? task.status;
@@ -572,10 +1059,9 @@ export function applyAction(
       const completedAt =
         status === "completed" ? (task.completedAt ?? nowIso()) : undefined;
       const updated: Task = {
-        ...task,
+        ...withoutLegacyTaskPriority(task),
         progress,
         status,
-        ...(action.priority !== undefined ? { priority: action.priority } : {}),
         ...(completedAt ? { completedAt } : { completedAt: undefined }),
       };
       const justCompleted =
@@ -600,10 +1086,43 @@ export function applyAction(
           : state.notifications,
       };
     }
+    case "add-request-note": {
+      requireCell0(user, "comment on requests");
+      const request = state.requests.find(
+        (item) => item.id === action.requestId,
+      );
+      if (!request) throw new Error("Request was not found.");
+      if (request.taskId)
+        return applyAction(state, user, {
+          type: "add-note",
+          taskId: request.taskId,
+          text: action.text,
+        });
+      const note = {
+        id: makeId("note"),
+        text: action.text.trim(),
+        author: user.name,
+        createdAt: nowIso(),
+      };
+      return {
+        ...state,
+        requests: state.requests.map((item) =>
+          item.id === request.id
+            ? { ...item, privateNotes: [...(item.privateNotes ?? []), note] }
+            : item,
+        ),
+        activities: appendActivity(
+          state,
+          `Private comment added to ${request.title}.`,
+          "cell-0",
+          "note",
+        ),
+      };
+    }
     case "add-note": {
       const task = state.tasks.find((item) => item.id === action.taskId);
       if (!task) throw new Error("Task was not found.");
-      if (!isCell0(user) && task.department !== user.department)
+      if (!isCell0Leader(user) && task.department !== user.department)
         throw new Error(
           "You can only add private notes to tasks in your department.",
         );
@@ -617,7 +1136,10 @@ export function applyAction(
         ...state,
         tasks: state.tasks.map((item) =>
           item.id === task.id
-            ? { ...item, privateNotes: [...item.privateNotes, note] }
+            ? {
+                ...withoutLegacyTaskPriority(item),
+                privateNotes: [...item.privateNotes, note],
+              }
             : item,
         ),
         activities: appendActivity(
@@ -631,7 +1153,7 @@ export function applyAction(
     }
     case "create-task": {
       requireCell0(user, "create internal tasks");
-      const task = makeInternalTask(action.input);
+      const task = makeInternalTask(action.input, state.catalog);
       return {
         ...state,
         tasks: [...state.tasks, task],
@@ -644,59 +1166,35 @@ export function applyAction(
         ),
       };
     }
-    case "add-user": {
-      requireCell0(user, "manage leader access");
-      if (
-        state.users.some(
-          (item) =>
-            item.email.toLowerCase() ===
-            action.input.email.trim().toLowerCase(),
-        )
-      )
-        throw new Error("A leader with that email already exists.");
-      const added: Leader = {
-        name: action.input.name.trim(),
-        email: action.input.email.trim(),
-        rank: action.input.rank,
-        department: action.input.department,
-        approved: action.input.approved,
-        id: makeId("leader"),
-      };
-      return {
-        ...state,
-        users: [...state.users, added],
-        activities: appendActivity(
-          state,
-          `Leader access added for ${added.name}.`,
-          added.department,
-          "access",
-        ),
-      };
-    }
-    case "update-user": {
-      requireCell0(user, "manage leader access");
-      const target = state.users.find((item) => item.id === action.userId);
-      if (!target) throw new Error("Leader was not found.");
-      if (target.id === user.id && !action.approved)
-        throw new Error("You cannot revoke your own access.");
-      return {
-        ...state,
-        users: state.users.map((item) =>
-          item.id === target.id ? { ...item, approved: action.approved } : item,
-        ),
-        activities: appendActivity(
-          state,
-          `Leader access ${action.approved ? "approved" : "revoked"} for ${target.name}.`,
-          target.department,
-          "access",
-        ),
-      };
-    }
+    case "save-ministry":
+      requireLeader(user, "manage request options");
+      return saveMinistry(state, action.name, action.previousName);
+    case "delete-ministry":
+      requireLeader(user, "manage request options");
+      return deleteMinistry(state, action.name);
+    case "save-service":
+      requireLeader(user, "manage request options");
+      return saveService(state, action.service);
+    case "delete-service":
+      requireLeader(user, "manage request options");
+      return deleteService(state, action.serviceId);
+    case "save-department":
+      requireCell0(user, "manage departments");
+      return saveDepartment(state, action.department, action.groupRenames);
+    case "delete-department":
+      requireCell0(user, "manage departments");
+      return deleteDepartment(state, action.departmentId);
+    case "invite-member":
+      requireCell0(user, "invite members");
+      return inviteMember(state, action.input);
+    case "update-member":
+      requireCell0(user, "manage members");
+      return updateMember(state, user, action.userId, action.changes);
     case "read-notifications":
       return {
         ...state,
         notifications: state.notifications.map((item) =>
-          isCell0(user) || item.department === user.department
+          isCell0Leader(user) || item.department === user.department
             ? { ...item, read: true }
             : item,
         ),

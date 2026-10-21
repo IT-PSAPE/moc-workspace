@@ -1,7 +1,16 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
-import { createSeedState, type Leader, type WorkspaceState } from "@moc/shared";
+import {
+  DEPARTMENTS,
+  MINISTRIES,
+  SERVICES,
+  createSeedState,
+  type Catalog,
+  type DepartmentDefinition,
+  type Leader,
+  type WorkspaceState,
+} from "@moc/shared";
 import { DEMO_TRACKING_CODES, hashTrackingCode } from "./tracking";
 
 export interface Repository {
@@ -45,13 +54,263 @@ function parseState(source: string): WorkspaceState {
   ) {
     throw new Error("Workspace state is missing required collections");
   }
-  return candidate as WorkspaceState;
+  const legacyTaskMinistries =
+    candidate.catalog === undefined
+      ? candidate.tasks.flatMap((task) =>
+          isRecord(task) && typeof task.ministry === "string"
+            ? [task.ministry]
+            : [],
+        )
+      : [];
+  const catalog = parseCatalog(candidate.catalog, legacyTaskMinistries);
+  const tasks = candidate.tasks.map((task) => {
+    if (!isRecord(task)) throw new Error("Workspace task is malformed");
+    const legacyTask = task as WorkspaceState["tasks"][number] & {
+      priority?: unknown;
+    };
+    const { priority: _priority, ...currentTask } = legacyTask;
+    return currentTask;
+  });
+  const users = candidate.users.map((member) => {
+    if (!isRecord(member)) throw new Error("Workspace member is malformed");
+    const legacyMember = member as Leader & { rank?: unknown };
+    const { rank, ...currentMember } = legacyMember;
+    if (
+      typeof currentMember.id !== "string" ||
+      typeof currentMember.name !== "string" ||
+      typeof currentMember.email !== "string" ||
+      typeof currentMember.department !== "string" ||
+      typeof currentMember.approved !== "boolean"
+    )
+      throw new Error("Workspace member is missing required fields");
+    if (rank !== undefined && (typeof rank !== "string" || !rank.trim()))
+      throw new Error("Legacy member duty is malformed");
+    if (
+      currentMember.duty !== undefined &&
+      (typeof currentMember.duty !== "string" || !currentMember.duty.trim())
+    )
+      throw new Error("Workspace member duty is malformed");
+    if (
+      currentMember.groups !== undefined &&
+      (!Array.isArray(currentMember.groups) ||
+        currentMember.groups.length === 0 ||
+        currentMember.groups.some((group) => typeof group !== "string"))
+    )
+      throw new Error("Workspace member groups are malformed");
+    if (
+      currentMember.isLeader !== undefined &&
+      typeof currentMember.isLeader !== "boolean"
+    )
+      throw new Error("Workspace member leadership status is malformed");
+    const defaultGroups = catalog.departments.find(
+      (department) => department.id === currentMember.department,
+    )?.groups;
+    if (!currentMember.duty && typeof rank !== "string")
+      throw new Error("Workspace member is missing legacy duty data");
+    if (!currentMember.groups && !defaultGroups)
+      throw new Error("Workspace member department is missing from the catalog");
+    const department = catalog.departments.find(
+      (item) => item.id === currentMember.department,
+    );
+    const groups = currentMember.groups ?? defaultGroups ?? [];
+    if (!department || groups.some((group) => !department.groups.includes(group)))
+      throw new Error("Workspace member groups do not match the department catalog");
+    return {
+      ...currentMember,
+      duty:
+        typeof currentMember.duty === "string" && currentMember.duty.trim()
+          ? currentMember.duty
+          : typeof rank === "string" && rank.trim()
+            ? rank
+            : "Member",
+      groups:
+        Array.isArray(currentMember.groups) && currentMember.groups.length > 0
+          ? [...currentMember.groups]
+          : [...(defaultGroups ?? [])],
+      isLeader:
+        typeof currentMember.isLeader === "boolean"
+          ? currentMember.isLeader
+          : true,
+    };
+  });
+  for (const task of tasks) {
+    const department = catalog.departments.find(
+      (item) => item.id === task.department,
+    );
+    if (!department || !department.groups.includes(task.subTeam))
+      throw new Error("Workspace task routing does not match the department catalog");
+    if (task.service !== "internal" && !catalog.services.some((item) => item.id === task.service))
+      throw new Error("Workspace task service is missing from the catalog");
+    if (!catalog.ministries.some((ministry) => foldName(ministry) === foldName(task.ministry)))
+      throw new Error("Workspace task ministry is missing from the catalog");
+  }
+  for (const request of candidate.requests) {
+    if (!isRecord(request)) throw new Error("Workspace request is malformed");
+    if (
+      typeof request.ministry !== "string" ||
+      !catalog.ministries.includes(request.ministry)
+    )
+      throw new Error("Workspace request ministry is missing from the catalog");
+    if (
+      typeof request.service !== "string" ||
+      !catalog.services.some((item) => item.id === request.service)
+    )
+      throw new Error("Workspace request service is missing from the catalog");
+  }
+  return { ...candidate, catalog, tasks, users } as WorkspaceState;
+}
+
+function parseCatalog(value: unknown, legacyTaskMinistries: string[] = []): Catalog {
+  const isLegacyStateWithoutCatalog = value === undefined;
+  if (!isLegacyStateWithoutCatalog && !isRecord(value))
+    throw new Error("Workspace catalog is malformed");
+  const source = (isLegacyStateWithoutCatalog ? {} : value) as Partial<Catalog>;
+  if (
+    !isLegacyStateWithoutCatalog &&
+    (["ministries", "services", "departments"] as const).some(
+      (collection) => !Object.prototype.hasOwnProperty.call(source, collection),
+    )
+  )
+    throw new Error("Workspace catalog is incomplete");
+  const ministries = isLegacyStateWithoutCatalog
+    ? [
+        ...MINISTRIES,
+        ...legacyTaskMinistries.filter(
+          (ministry) => !MINISTRIES.some((seeded) => foldName(seeded) === foldName(ministry)),
+        ),
+      ]
+    : source.ministries;
+  const services = isLegacyStateWithoutCatalog
+    ? SERVICES.map((service) => ({ ...service }))
+    : source.services;
+  if (
+    !Array.isArray(ministries) ||
+    ministries.length === 0 ||
+    ministries.some((ministry) => typeof ministry !== "string" || !ministry.trim())
+  )
+    throw new Error("Workspace ministry catalog is malformed");
+  if (
+    !Array.isArray(services) ||
+    services.some(
+      (service) =>
+        !isRecord(service) ||
+        typeof service.id !== "string" ||
+        !service.id.trim() ||
+        !isStableCatalogId(service.id) ||
+        typeof service.name !== "string" ||
+        !service.name.trim() ||
+        typeof service.department !== "string" ||
+        typeof service.subTeam !== "string" ||
+        (service.requiresAiredDates !== undefined &&
+          typeof service.requiresAiredDates !== "boolean"),
+    )
+  )
+    throw new Error("Workspace service catalog is malformed");
+  const rawDepartments = isLegacyStateWithoutCatalog ? DEPARTMENTS : source.departments;
+  if (!Array.isArray(rawDepartments) || rawDepartments.length === 0)
+    throw new Error("Workspace department catalog is malformed");
+  const departments = rawDepartments.map((department) => {
+    if (
+      !isRecord(department) ||
+      typeof department.id !== "string" ||
+      !department.id.trim() ||
+      !isStableCatalogId(department.id) ||
+      typeof department.name !== "string" ||
+      !department.name.trim() ||
+      !Array.isArray(department.groups) ||
+      department.groups.length === 0 ||
+      department.groups.some((group) => typeof group !== "string" || !group.trim()) ||
+      !Object.prototype.hasOwnProperty.call(department, "color")
+    )
+      throw new Error("Workspace department catalog is malformed");
+    const color = department.color;
+    if (!["pink", "purple", "amber", "blue", "green", "teal"].includes(color))
+      throw new Error("Workspace department color is malformed");
+    return { ...department, groups: [...department.groups], color } as DepartmentDefinition;
+  });
+  const folded = foldName;
+  const hasDuplicates = (values: string[]) =>
+    new Set(values.map(folded)).size !== values.length;
+  if (!departments.some((department) => department.id === "cell-0"))
+    throw new Error("Workspace department catalog must include Cell 0");
+  if (
+    hasDuplicates(departments.map(({ id }) => id)) ||
+    hasDuplicates(departments.map(({ name }) => name)) ||
+    hasDuplicates(ministries) ||
+    hasDuplicates(services.map((service) => service.name)) ||
+    new Set(services.map((service) => service.id)).size !== services.length ||
+    departments.some((department) => hasDuplicates(department.groups))
+  )
+    throw new Error("Workspace catalog contains duplicate names or IDs");
+  if (
+    services.some((service) => {
+      const department = departments.find((item) => item.id === service.department);
+      return !department || !department.groups.includes(service.subTeam);
+    })
+  )
+    throw new Error("Workspace service routing does not match the department catalog");
+  return {
+    ministries: [...ministries],
+    services: services.map((service) => ({ ...service })),
+    departments,
+  };
+}
+
+function foldName(value: string): string {
+  return value.trim().toLocaleLowerCase();
+}
+
+function isStableCatalogId(value: string): boolean {
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function requiresMigration(source: string): boolean {
+  const value: unknown = JSON.parse(source);
+  if (typeof value !== "object" || value === null) return false;
+  const state = value as Partial<WorkspaceState>;
+  const hasPriority =
+    Array.isArray(state.tasks) &&
+    state.tasks.some(
+      (task) =>
+        typeof task === "object" &&
+        task !== null &&
+        Object.prototype.hasOwnProperty.call(task, "priority"),
+    );
+  const hasLegacyMember =
+    Array.isArray(state.users) &&
+    state.users.some((member) => {
+      if (typeof member !== "object" || member === null) return false;
+      return (
+        Object.prototype.hasOwnProperty.call(member, "rank") ||
+        !Object.prototype.hasOwnProperty.call(member, "duty") ||
+        !Object.prototype.hasOwnProperty.call(member, "groups") ||
+        !Object.prototype.hasOwnProperty.call(member, "isLeader")
+      );
+    });
+  const catalog = state.catalog as Partial<Catalog> | undefined;
+  const hasLegacyCatalog =
+    !catalog ||
+    !Array.isArray(catalog.ministries) ||
+    !Array.isArray(catalog.services) ||
+    !Array.isArray(catalog.departments) ||
+    catalog.departments.some(
+      (department) =>
+        typeof department !== "object" ||
+        department === null ||
+        !Object.prototype.hasOwnProperty.call(department, "color"),
+    );
+  return hasPriority || hasLegacyMember || hasLegacyCatalog;
 }
 
 /** Local JSON adapter. Replace this implementation with a durable repository for production. */
 export class JsonRepository implements Repository {
   private pending: Promise<void> = Promise.resolve();
   private initialization: Promise<WorkspaceState> | undefined;
+  private migration: Promise<void> | undefined;
   private readonly filePath: string;
 
   constructor(
@@ -62,6 +321,7 @@ export class JsonRepository implements Repository {
   }
 
   async read(): Promise<WorkspaceState> {
+    await this.migrateLegacyWorkspaceState();
     try {
       return parseState(await readFile(this.filePath, "utf8"));
     } catch (error) {
@@ -117,6 +377,21 @@ export class JsonRepository implements Repository {
       mode: 0o600,
     });
     await rename(temporaryPath, this.filePath);
+  }
+
+  private async migrateLegacyWorkspaceState(): Promise<void> {
+    this.migration ??= (async () => {
+      let source: string;
+      try {
+        source = await readFile(this.filePath, "utf8");
+      } catch (error) {
+        if (isMissingFile(error)) return;
+        throw error;
+      }
+      if (!requiresMigration(source)) return;
+      await this.write(parseState(source));
+    })();
+    await this.migration;
   }
 }
 

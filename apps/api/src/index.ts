@@ -7,10 +7,8 @@ import { fileURLToPath } from "node:url";
 import {
   applyAction,
   createRequest,
-  MINISTRIES,
   publicProjection,
   publicRequest,
-  SERVICES,
   updatePublicRequest,
   validateWorkspaceAction,
   type Department,
@@ -167,9 +165,14 @@ export function createApiApp(
     }),
   );
 
-  app.get("/api/catalog", (c) =>
-    c.json({ services: SERVICES, ministries: MINISTRIES }),
-  );
+  app.get("/api/catalog", async (c) => {
+    const { catalog } = await repository.read();
+    return c.json({
+      services: catalog.services,
+      ministries: catalog.ministries,
+      departments: catalog.departments,
+    });
+  });
 
   app.get("/api/integrations", async (c) => {
     const session = getSession(c);
@@ -179,8 +182,8 @@ export function createApiApp(
       (user) => user.id === session.user.id && user.approved,
     );
     if (!currentUser) return unauthorized(c);
-    if (currentUser.department !== "cell-0")
-      return c.json({ error: "Only Cell 0 can view integration status." }, 403);
+    if (currentUser.department !== "cell-0" || !currentUser.isLeader)
+      return c.json({ error: "Only Cell 0 leaders can view integration status." }, 403);
     const telegramChats = [
       process.env.TELEGRAM_CHAT_CELL_0,
       process.env.TELEGRAM_CHAT_SOUND,
@@ -237,7 +240,7 @@ export function createApiApp(
         );
         if (!actor)
           throw new Error(
-            "Your leader access has been revoked. Please sign in again.",
+            "Your member access has been revoked. Please sign in again.",
           );
         return applyAction(state, actor, body);
       });
@@ -245,7 +248,7 @@ export function createApiApp(
       if (
         error instanceof Error &&
         error.message ===
-          "Your leader access has been revoked. Please sign in again."
+          "Your member access has been revoked. Please sign in again."
       )
         return unauthorized(c);
       return c.json(
@@ -420,7 +423,7 @@ function limitCredentialAttempts(
 
 function unauthorized(c: Context) {
   return c.json(
-    { error: "Sign in with an approved leader account to continue." },
+    { error: "Sign in with an approved member account to continue." },
     401,
   );
 }
@@ -435,13 +438,17 @@ function projectWorkspace(
   state: WorkspaceState,
   user: NonNullable<Session["user"]>,
 ): WorkspaceState {
-  if (user.department === "cell-0")
+  if (user.department === "cell-0" && user.isLeader)
     return {
       ...state,
-      requests: state.requests.map(publicRequest),
+      requests: state.requests.map(
+        ({ trackingCodeHash: _trackingCodeHash, ...request }) => request,
+      ),
     };
-  const publicTasks = state.tasks.filter(
-    (task) => task.department !== "cell-0",
+  const publicTasks = state.tasks.filter((task) =>
+    user.department === "cell-0"
+      ? task.department === "cell-0"
+      : task.department !== "cell-0",
   );
   const taskIds = new Set(publicTasks.map((task) => task.id));
   const requestIds = new Set(
@@ -450,6 +457,7 @@ function projectWorkspace(
       .filter((id): id is string => id !== undefined),
   );
   return {
+    catalog: state.catalog,
     tasks: publicTasks.map((task) =>
       task.department === user.department
         ? task

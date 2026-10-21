@@ -128,7 +128,7 @@ export function createAuthRouter(deps: AuthDependencies): Hono {
       return error(
         c,
         403,
-        "No approved demo leader is configured for that department.",
+        "No approved demo member is configured for that department.",
       );
     setSession(c, user, true);
     return c.json({ user, demo: true } satisfies Session);
@@ -271,7 +271,7 @@ export function createAuthRouter(deps: AuthDependencies): Hono {
         return error(
           c,
           403,
-          "This Google account is not an approved department leader. Contact Cell 0 for access.",
+          "This Google account is not an approved member. Contact Cell 0 for access.",
         );
       setSession(c, user, false);
       return c.redirect(workspaceUrl(), 302);

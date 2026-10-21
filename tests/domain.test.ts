@@ -29,11 +29,11 @@ describe("shared domain model", () => {
     const approved = applyAction(submitted, cell0, {
       type: "approve",
       requestId: request.id,
-      priority: "high",
     });
     const routed = approved.tasks.find(
       (task) => task.requestId === request.id,
     )!;
+    expect(routed).not.toHaveProperty("priority");
     const service = SERVICES.find((item) => item.id === request.service)!;
     expect(routed.department).toBe(service.department);
     expect(routed.subTeam).toBe(service.subTeam);
@@ -62,6 +62,66 @@ describe("shared domain model", () => {
         .map((item) => item.department)
         .sort(),
     ).toEqual(["cell-0", service.department].sort());
+  });
+
+  it("keeps request comments private, preserves them through edits, and carries them into the assigned task", () => {
+    const { state, request } = createRequest(createSeedState(), freshInput());
+    const cell0 = state.users.find((user) => user.department === "cell-0")!;
+    const leader = state.users.find((user) => user.department === "design")!;
+    const action = {
+      type: "add-request-note" as const,
+      requestId: request.id,
+      text: "  Please confirm the approved footage.  ",
+    };
+    expect(() => applyAction(state, leader, action)).toThrow(
+      /only an approved Cell 0/i,
+    );
+    expect(() => applyAction(state, cell0, { ...action, text: " " })).toThrow(
+      /comment/i,
+    );
+    expect(() =>
+      applyAction(state, cell0, { ...action, requestId: "missing" }),
+    ).toThrow(/not found/i);
+    const commented = applyAction(state, cell0, action);
+    const notes = commented.requests.find(
+      (item) => item.id === request.id,
+    )!.privateNotes!;
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toMatchObject({
+      text: action.text.trim(),
+      author: cell0.name,
+    });
+    expect(
+      publicProjection(commented, request.reference, request.ministry)!.request,
+    ).not.toHaveProperty("privateNotes");
+    const edited = updatePublicRequest(
+      commented,
+      request.reference,
+      request.ministry,
+      freshInput({ title: "Updated youth recap" }),
+    ).state;
+    expect(
+      edited.requests.find((item) => item.id === request.id)!.privateNotes,
+    ).toEqual(notes);
+    const approved = applyAction(edited, cell0, {
+      type: "approve",
+      requestId: request.id,
+    });
+    const task = approved.tasks.find((item) => item.requestId === request.id)!;
+    expect(task.privateNotes).toEqual(notes);
+    const continued = applyAction(approved, cell0, {
+      ...action,
+      text: "Ready for production.",
+    });
+    expect(
+      continued.tasks.find((item) => item.id === task.id)!.privateNotes,
+    ).toHaveLength(2);
+    expect(
+      publicProjection(continued, request.reference, request.ministry)!.request,
+    ).not.toHaveProperty("privateNotes");
+    expect(
+      publicProjection(continued, request.reference, request.ministry)!.task,
+    ).not.toHaveProperty("privateNotes");
   });
 
   it("includes the requested service catalog and routes each service through an assigned team", () => {
@@ -182,35 +242,202 @@ describe("shared domain model", () => {
     ).toThrow(/not been approved/i);
   });
 
-  it("enforces rank and department roles when granting leader access", () => {
+  it("invites email-bound members and limits member management to Cell 0 leaders", () => {
     const state = createSeedState();
     const cell0 = state.users.find((user) => user.department === "cell-0")!;
-    const base = {
-      name: "New Leader",
-      email: "new-leader@example.org",
-      approved: false,
+    const member = state.users.find((user) => user.department === "design")!;
+    const input = {
+      name: "New Member",
+      email: "new-member@example.org",
+      duty: "Camera operator",
+      department: "sound",
+      groups: ["Sound"],
+      isLeader: false,
     };
-    expect(() =>
-      applyAction(state, cell0, {
-        type: "add-user",
-        input: { ...base, rank: "CMN", department: "sound" },
-      }),
-    ).toThrow(/rank does not match/i);
-    expect(() =>
-      applyAction(state, cell0, {
-        type: "add-user",
-        input: { ...base, rank: "GJN", department: "cell-0" },
-      }),
-    ).toThrow(/rank does not match/i);
-    const valid = applyAction(state, cell0, {
-      type: "add-user",
-      input: { ...base, rank: "TJN", department: "sound" },
+    expect(() => applyAction(state, member, {
+      type: "invite-member",
+      input,
+    })).toThrow(/Cell 0 leader/i);
+    const invited = applyAction(state, cell0, { type: "invite-member", input });
+    expect(invited.users.at(-1)).toMatchObject({
+      ...input,
+      email: input.email,
+      approved: true,
+      invitedAt: expect.any(String),
     });
-    expect(
-      valid.users.some(
-        (user) => user.email === base.email && user.rank === "TJN",
+
+    const invitedMember = invited.users.at(-1)!;
+    expect(() => applyAction(invited, cell0, {
+      type: "update-member",
+      userId: invitedMember.id,
+      changes: { email: "changed@example.org" },
+    })).toThrow(/email/i);
+    expect(() => applyAction(invited, cell0, {
+      type: "update-member",
+      userId: cell0.id,
+      changes: { approved: false },
+    })).toThrow(/your own Cell 0 admin/i);
+    const updated = applyAction(invited, cell0, {
+      type: "update-member",
+      userId: invitedMember.id,
+      changes: { duty: "Mix engineer", isLeader: true },
+    });
+    expect(updated.users.find((user) => user.id === invitedMember.id)).toMatchObject({
+      duty: "Mix engineer",
+      isLeader: true,
+      email: input.email,
+    });
+  });
+
+  it("protects department ownership, stable Cell 0 and groups referenced by routing", () => {
+    const state = createSeedState();
+    const cell0 = state.users.find((user) => user.department === "cell-0")!;
+    const design = state.users.find((user) => user.department === "design")!;
+    const newDepartment = {
+      id: "operations",
+      name: "Operations",
+      groups: ["Communications"],
+      color: "teal" as const,
+    };
+    expect(() => applyAction(state, design, {
+      type: "save-department",
+      department: newDepartment,
+    })).toThrow(/Cell 0 leader/i);
+    const created = applyAction(state, cell0, {
+      type: "save-department",
+      department: newDepartment,
+    });
+    const routed = applyAction(created, cell0, {
+      type: "save-service",
+      service: {
+        id: "operations-service",
+        name: "Operations service",
+        department: "operations",
+        subTeam: "Communications",
+      },
+    });
+    expect(() => applyAction(routed, cell0, {
+      type: "delete-department",
+      departmentId: "operations",
+    })).toThrow(/reassign members, services, and tasks/i);
+    expect(() => applyAction(routed, cell0, {
+      type: "save-department",
+      department: {
+        ...newDepartment,
+        id: "design",
+        name: "Design",
+        groups: ["Art Production"],
+      },
+    })).toThrow(/referenced group/i);
+    expect(() => applyAction(state, cell0, {
+      type: "delete-department",
+      departmentId: "cell-0",
+    })).toThrow(/cannot be deleted/i);
+  });
+
+  it("renames referenced department groups and preserves member, service, and task assignments", () => {
+    const state = createSeedState();
+    const cell0 = state.users.find((user) => user.department === "cell-0")!;
+    const department = state.catalog.departments.find((item) => item.id === "design")!;
+    const renamed = applyAction(state, cell0, {
+      type: "save-department",
+      department: {
+        ...department,
+        groups: ["Design Studio", "Art Production"],
+      },
+      groupRenames: { "Graphic Design": "Design Studio" },
+    });
+
+    expect(renamed.catalog.services
+      .filter((service) => service.department === "design" && service.subTeam === "Design Studio"),
+    ).not.toHaveLength(0);
+    expect(renamed.users
+      .filter((member) => member.department === "design")
+      .flatMap((member) => member.groups),
+    ).toContain("Design Studio");
+    expect(renamed.tasks
+      .filter((task) => task.department === "design" && task.subTeam === "Design Studio"),
+    ).not.toHaveLength(0);
+    expect(() => applyAction(state, cell0, {
+      type: "save-department",
+      department: {
+        ...department,
+        groups: ["Design Studio", "Art Production"],
+      },
+      groupRenames: { "Graphic Design": "Design Studio", "Art Production": "Design Studio" },
+    })).toThrow(/same group/i);
+
+    expect(() => applyAction(state, cell0, {
+      type: "save-department",
+      department: { ...department, groups: ["graphic design", "Art Production"] },
+    })).toThrow(/referenced group/i);
+    const caseRenamed = applyAction(state, cell0, {
+      type: "save-department",
+      department: { ...department, groups: ["graphic design", "Art Production"] },
+      groupRenames: { "Graphic Design": "graphic design" },
+    });
+    expect(caseRenamed.catalog.services
+      .filter((service) => service.department === "design" && service.subTeam === "graphic design"),
+    ).not.toHaveLength(0);
+    expect(caseRenamed.tasks
+      .filter((task) => task.department === "design" && task.subTeam === "graphic design"),
+    ).not.toHaveLength(0);
+
+    const withPrototypeNames = {
+      ...state,
+      catalog: {
+        ...state.catalog,
+        departments: state.catalog.departments.map((item) =>
+          item.id === "design"
+            ? { ...item, groups: [...item.groups, "constructor", "toString"] }
+            : item,
+        ),
+        services: [
+          ...state.catalog.services,
+          { id: "prototype-service", name: "Prototype service", department: "design", subTeam: "constructor" },
+          { id: "string-service", name: "String service", department: "design", subTeam: "toString" },
+        ],
+      },
+      users: state.users.map((member) =>
+        member.department === "design"
+          ? { ...member, groups: [...member.groups, "constructor", "toString"] }
+          : member,
       ),
-    ).toBe(true);
+    };
+    const prototypeRenamed = applyAction(withPrototypeNames, cell0, {
+      type: "save-department",
+      department: {
+        ...department,
+        groups: [...department.groups, "constructor-new", "toString-new"],
+      },
+      groupRenames: { constructor: "constructor-new", toString: "toString-new" },
+    });
+    expect(prototypeRenamed.catalog.services.find((service) => service.id === "prototype-service")?.subTeam).toBe("constructor-new");
+    expect(prototypeRenamed.catalog.services.find((service) => service.id === "string-service")?.subTeam).toBe("toString-new");
+    expect(prototypeRenamed.users.find((member) => member.department === "design")?.groups).toContain("constructor-new");
+  });
+
+  it("requires URL-safe stable IDs for managed departments and services", () => {
+    const state = createSeedState();
+    const cell0 = state.users.find((user) => user.department === "cell-0")!;
+    expect(() => applyAction(state, cell0, {
+      type: "save-department",
+      department: {
+        id: "not a safe id",
+        name: "Unsafe",
+        groups: ["Group"],
+        color: "teal",
+      },
+    })).toThrow(/lowercase letters, numbers, and hyphens/i);
+    expect(() => applyAction(state, cell0, {
+      type: "save-service",
+      service: {
+        id: "not a safe id",
+        name: "Unsafe",
+        department: "sound",
+        subTeam: "Sound",
+      },
+    })).toThrow(/lowercase letters, numbers, and hyphens/i);
   });
 
   it("requires rejection reasons and exposes only safe task tracking fields", () => {
@@ -227,7 +454,6 @@ describe("shared domain model", () => {
     const routed = applyAction(submitted, cell0, {
       type: "approve",
       requestId: request.id,
-      priority: "medium",
     });
     const task = routed.tasks.find((item) => item.requestId === request.id)!;
     const withNote = applyAction(routed, cell0, {
@@ -312,6 +538,36 @@ describe("shared domain model", () => {
     expect(completed.completedAt).toBeTruthy();
   });
 
+  it("does not preserve legacy task priority when an action copies a task", () => {
+    const state = createSeedState();
+    const cell0 = state.users.find((user) => user.department === "cell-0")!;
+    const task = state.tasks[0]!;
+    const legacyState = {
+      ...state,
+      tasks: state.tasks.map((item) =>
+        item.id === task.id ? { ...item, priority: "urgent" } : item,
+      ),
+    } as typeof state;
+
+    const updated = applyAction(legacyState, cell0, {
+      type: "update-task",
+      taskId: task.id,
+      progress: 25,
+    });
+    const updatedTask = updated.tasks.find((item) => item.id === task.id)!;
+    expect(updatedTask.progress).toBe(25);
+    expect(updatedTask).not.toHaveProperty("priority");
+
+    const commented = applyAction(legacyState, cell0, {
+      type: "add-note",
+      taskId: task.id,
+      text: "A note that must not restore removed data.",
+    });
+    expect(commented.tasks.find((item) => item.id === task.id)).not.toHaveProperty(
+      "priority",
+    );
+  });
+
   it("keeps progress and status synchronized when completing or reopening tasks", () => {
     const state = createSeedState();
     const cell0 = state.users.find((user) => user.department === "cell-0")!;
@@ -319,24 +575,24 @@ describe("shared domain model", () => {
       (task) => task.status === "completed",
     )!;
     const originalCompletedAt = completedTask.completedAt;
-    const priorityOnly = applyAction(state, cell0, {
+    const unchangedCompletion = applyAction(state, cell0, {
       type: "update-task",
       taskId: completedTask.id,
-      priority: "urgent",
+      status: "completed",
     });
     expect(
-      priorityOnly.tasks.find((task) => task.id === completedTask.id),
+      unchangedCompletion.tasks.find((task) => task.id === completedTask.id),
     ).toMatchObject({
       progress: 100,
       status: "completed",
       completedAt: originalCompletedAt,
     });
     expect(
-      priorityOnly.notifications.filter(
+      unchangedCompletion.notifications.filter(
         (item) => item.text === `${completedTask.title} completed.`,
       ),
     ).toHaveLength(0);
-    const conflicting = applyAction(priorityOnly, cell0, {
+    const conflicting = applyAction(unchangedCompletion, cell0, {
       type: "update-task",
       taskId: completedTask.id,
       progress: 50,
@@ -392,7 +648,6 @@ describe("shared domain model", () => {
         title: "Private leadership follow-up",
         department: "cell-0",
         subTeam: "Cell 0",
-        priority: "high",
         dueAt: new Date(Date.now() + 86400000).toISOString(),
         instructions: "Prepare the leadership agenda.",
         notes: "Keep the discussion confidential.",
@@ -429,47 +684,49 @@ describe("shared domain model", () => {
         taskId: "t1",
         priority: "critical",
       }),
-    ).toThrow(/valid task priority/i);
+    ).toThrow(/provide a task field to update/i);
     expect(() => validateWorkspaceAction({ type: "other-action" })).toThrow(
       /valid workspace action/i,
     );
     expect(() =>
       validateWorkspaceAction({
-        type: "add-user",
+        type: "invite-member",
         input: {
-          name: "Leader",
-          email: "leader@example.org",
-          department: "design",
-          rank: "CMN",
-          approved: "yes",
+          name: "Member",
+          email: "member@example.org",
+          duty: "Sound operator",
+          department: "sound",
+          groups: ["Missing group"],
+          isLeader: false,
         },
-      }),
-    ).toThrow(/approval must be true or false/i);
+      }, createSeedState().catalog),
+    ).toThrow(/groups from the selected department/i);
   });
 
   it("validates catalog IDs, required notes, future due dates and exact aired dates", () => {
+    const validate = (input: RequestInput) => validateRequest(input, createSeedState().catalog);
     expect(() =>
-      validateRequest(freshInput({ service: "Video Editing" })),
+      validate(freshInput({ service: "Video Editing" })),
     ).toThrow(/valid service/i);
-    expect(() => validateRequest(freshInput({ notes: "   " }))).toThrow(
+    expect(() => validate(freshInput({ notes: "   " }))).toThrow(
       /notes are required/i,
     );
     expect(() =>
-      validateRequest(
+      validate(
         freshInput({ dueAt: new Date(Date.now() - 1000).toISOString() }),
       ),
     ).toThrow(/future/i);
     expect(() =>
-      validateRequest(freshInput({ dueAt: "2099-02-30T12:00:00Z" })),
+      validate(freshInput({ dueAt: "2099-02-30T12:00:00Z" })),
     ).toThrow(/valid due date/i);
-    expect(() => validateRequest(freshInput({ dueAt: "2099-12-30" }))).toThrow(
+    expect(() => validate(freshInput({ dueAt: "2099-12-30" }))).toThrow(
       /valid due date/i,
     );
     expect(() =>
-      validateRequest(freshInput({ service: "previously-aired-video" })),
+      validate(freshInput({ service: "previously-aired-video" })),
     ).toThrow(/aired date/i);
     expect(() =>
-      validateRequest(
+      validate(
         freshInput({
           service: "previously-aired-video",
           airedDates: ["2026-9-1"],
@@ -477,7 +734,7 @@ describe("shared domain model", () => {
       ),
     ).toThrow(/YYYY-MM-DD/i);
     expect(() =>
-      validateRequest(
+      validate(
         freshInput({
           service: "previously-aired-video",
           airedDates: ["2025-02-29"],
@@ -485,7 +742,7 @@ describe("shared domain model", () => {
       ),
     ).toThrow(/YYYY-MM-DD/i);
     expect(() =>
-      validateRequest(
+      validate(
         freshInput({
           service: "previously-aired-video",
           airedDates: ["2024-02-29"],
@@ -493,7 +750,7 @@ describe("shared domain model", () => {
       ),
     ).not.toThrow();
     expect(() =>
-      validateRequest(
+      validate(
         freshInput({
           service: "previously-aired-video",
           airedDates: ["2099-01-01"],
@@ -501,7 +758,7 @@ describe("shared domain model", () => {
       ),
     ).toThrow(/cannot be in the future/i);
     expect(() =>
-      validateRequest(
+      validate(
         freshInput({
           service: "previously-aired-video",
           airedDates: [new Date().toISOString().slice(0, 10)],
@@ -509,7 +766,7 @@ describe("shared domain model", () => {
       ),
     ).not.toThrow();
     expect(() =>
-      validateRequest(
+      validate(
         freshInput({
           service: "previously-aired-video",
           airedDates: ["2026-09-01"],
@@ -517,7 +774,6 @@ describe("shared domain model", () => {
       ),
     ).not.toThrow();
   });
-
   it("allows a public edit only while pending and preserves the MOC reference", () => {
     const base = createRequest(createSeedState(), freshInput());
     const state = {
@@ -571,7 +827,6 @@ describe("shared domain model", () => {
     const approved = applyAction(edited.state, cell0, {
       type: "approve",
       requestId: request.id,
-      priority: "low",
     });
     expect(() =>
       updatePublicRequest(

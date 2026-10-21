@@ -1,58 +1,329 @@
-@import "@fontsource-variable/inter/index.css";
+@font-face {
+  font-family: "DM Sans";
+  font-style: normal;
+  font-weight: 100 1000;
+  font-display: swap;
+  src: url("./fonts/dm-sans-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./fonts/geist-mono-latin.woff2") format("woff2");
+}
 
+/* Foundations ported directly from moc-console/packages/ui/src/index.css.
+   The app's existing semantic names map onto the console tokens below.
+   Fonts are served locally; typography does not depend on Google at runtime. */
 :root {
-  --font-body: "Inter Variable", sans-serif;
-  --font-display: var(--font-body);
+  /* FONT FAMILY */
+  --font-body: "DM Sans", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-display:
+    "DM Sans", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono:
+    "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  --font-title: "DM Sans", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-subheading:
+    "DM Sans", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-label: "DM Sans", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-paragraph:
+    "DM Sans", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-family-sans:
+    "DM Sans", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  /* TYPOGRAPHY SCALE */
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 14px;
+  --text-sm--line-height: 20px;
+  --text-md: 16px;
+  --text-md--line-height: 24px;
+  --text-lg: 18px;
+  --text-lg--line-height: 28px;
+  --text-xl: 24px;
+  --text-xl--line-height: 28.125px;
+  --text-2xl: 32px;
+  --text-2xl--line-height: 37.5px;
+  --text-3xl: 40px;
+  --text-3xl--line-height: 46.875px;
+  --text-4xl: 48px;
+  --text-4xl--line-height: 57.6px;
+  --text-5xl: 56px;
+  --text-5xl--line-height: 64.4px;
+  /* FIGMA TEXT STYLES */
+  --text-title-h1: 56px;
+  --text-title-h1--line-height: 1.1;
+  --text-title-h1--letter-spacing: -0.56px;
+  --text-title-h1--font-weight: 500;
+  --text-title-h2: 48px;
+  --text-title-h2--line-height: 1.1;
+  --text-title-h2--letter-spacing: -0.48px;
+  --text-title-h2--font-weight: 500;
+  --text-title-h3: 40px;
+  --text-title-h3--line-height: 1.1;
+  --text-title-h3--letter-spacing: -0.4px;
+  --text-title-h3--font-weight: 500;
+  --text-title-h4: 32px;
+  --text-title-h4--line-height: 1.1;
+  --text-title-h4--letter-spacing: -0.16px;
+  --text-title-h4--font-weight: 500;
+  --text-title-h5: 24px;
+  --text-title-h5--line-height: 32px;
+  --text-title-h5--letter-spacing: -0.24px;
+  --text-title-h5--font-weight: 600;
+  --text-title-h6: 20px;
+  --text-title-h6--line-height: 28px;
+  --text-title-h6--letter-spacing: -0.2px;
+  --text-title-h6--font-weight: 600;
+  --text-label-lg: 24px;
+  --text-label-lg--line-height: 32px;
+  --text-label-lg--letter-spacing: 0px;
+  --text-label-lg--font-weight: 600;
+  --text-label-bg: 18px;
+  --text-label-bg--line-height: 28px;
+  --text-label-bg--letter-spacing: 0px;
+  --text-label-bg--font-weight: 600;
+  --text-label-md: 16px;
+  --text-label-md--line-height: 24px;
+  --text-label-md--letter-spacing: 0px;
+  --text-label-md--font-weight: 600;
+  --text-label-sm: 14px;
+  --text-label-sm--line-height: 20px;
+  --text-label-sm--letter-spacing: 0px;
+  --text-label-sm--font-weight: 600;
+  --text-label-xs: 12px;
+  --text-label-xs--line-height: 16px;
+  --text-label-xs--letter-spacing: 0px;
+  --text-label-xs--font-weight: 600;
+  --text-paragraph-lg: 24px;
+  --text-paragraph-lg--line-height: 1.4;
+  --text-paragraph-lg--letter-spacing: -0.36px;
+  --text-paragraph-lg--font-weight: 400;
+  --text-paragraph-bg: 18px;
+  --text-paragraph-bg--line-height: 1.4;
+  --text-paragraph-bg--letter-spacing: -0.27px;
+  --text-paragraph-bg--font-weight: 400;
+  --text-paragraph-md: 16px;
+  --text-paragraph-md--line-height: 24px;
+  --text-paragraph-md--letter-spacing: 0px;
+  --text-paragraph-md--font-weight: 400;
+  --text-paragraph-sm: 14px;
+  --text-paragraph-sm--line-height: 20px;
+  --text-paragraph-sm--letter-spacing: 0px;
+  --text-paragraph-sm--font-weight: 400;
+  --text-paragraph-xs: 12px;
+  --text-paragraph-xs--line-height: 16px;
+  --text-paragraph-xs--letter-spacing: 0px;
+  --text-paragraph-xs--font-weight: 400;
+  /* SEMANTIC COLORS (Light Mode Defaults) */
+  --color-text-primary: #1a1a1a;
+  --color-text-on-brand: #ffffff;
+  --color-text-secondary: #2d2d2d;
+  --color-text-tertiary: #525252;
+  --color-text-quaternary: #707070;
+  --color-text-brand: #df006c;
+  --color-text-error: #c8242e;
+  --color-text-warning: #c6531a;
+  --color-text-success: #207f47;
+  --color-border-primary: #cbcbcb;
+  --color-border-secondary: #e8e8e8;
+  --color-border-brand: #ff27ae;
+  --color-border-error: #f83341;
+  --color-background-primary: #ffffff;
+  --color-background-secondary: #f6f6f6;
+  --color-background-tertiary: #f4f4f4;
+  --color-background-quaternary: #e8e8e8;
+  --color-background-overlay: #000000;
+  --color-background-brand: #fff0f9;
+  --color-background-brand_solid: #ff1493;
+  --color-background-error: #ffe8e9;
+  --color-background-error_solid: #e4313d;
+  --color-background-warning: #fff1e8;
+  --color-background-success: #ddf9e9;
+  --color-utility-blue-50: #e8efff;
+  --color-utility-blue-700: #1145c7;
+  --color-utility-yellow-50: #fff9e8;
+  --color-utility-yellow-700: #c28e2e;
+  --color-utility-purple-50: #ece9fe;
+  --color-utility-purple-700: #4a31bf;
+  --text-color-primary: var(--color-text-primary);
+  --text-color-on-brand: var(--color-text-on-brand);
+  --text-color-secondary: var(--color-text-secondary);
+  --text-color-tertiary: var(--color-text-tertiary);
+  --text-color-quaternary: var(--color-text-quaternary);
+  --text-color-brand: var(--color-text-brand);
+  --text-color-error: var(--color-text-error);
+  --text-color-warning: var(--color-text-warning);
+  --text-color-success: var(--color-text-success);
+  --border-color-primary: var(--color-border-primary);
+  --border-color-secondary: var(--color-border-secondary);
+  --border-color-brand: var(--color-border-brand);
+  --border-color-error: var(--color-border-error);
+  --background-color-primary: var(--color-background-primary);
+  --background-color-secondary: var(--color-background-secondary);
+  --background-color-tertiary: var(--color-background-tertiary);
+  --background-color-quaternary: var(--color-background-quaternary);
+  --background-color-overlay: var(--color-background-overlay);
+  --background-color-brand: var(--color-background-brand);
+  --background-color-brand_solid: var(--color-background-brand_solid);
+  --background-color-error: var(--color-background-error);
+  --background-color-error_solid: var(--color-background-error_solid);
+  --background-color-warning: var(--color-background-warning);
+  --background-color-success: var(--color-background-success);
+  /* Custom Spacing */
+  --spacing: 0.25rem;
+  --spacing-header: 3rem;
+  --spacing-sidebar: 16rem;
+  --spacing-sidebar-collapsed: 3.5rem;
+  --spacing-content: 80rem;
+  --spacing-content-sm: 45rem;
+  --spacing-content-md: 64rem;
+  --spacing-page-gutter: 1.5rem;
+  --spacing-page-top: 1.5rem;
+  /* Control heights — see docs/design-system.md §2. Every interactive control is one of these. */
+  --spacing-control-sm: 2rem;
+  --spacing-control: 2.25rem;
+  --spacing-control-lg: 2.75rem;
+  --canvas: var(--color-background-secondary);
+  --surface: var(--color-background-primary);
+  --surface-raised: var(--color-background-primary);
+  --surface-sunken: var(--color-background-tertiary);
+  --surface-hover: var(--color-background-secondary);
+  --surface-active: var(--color-background-quaternary);
+  --line: var(--color-border-secondary);
+  --line-strong: var(--color-border-primary);
+  --line-subtle: var(--color-border-secondary);
+  /* Keep form boundaries visible at 3:1 against white. */
+  --line-control: #888888;
+  --ink: var(--color-text-primary);
+  --ink-secondary: var(--color-text-secondary);
+  --muted: var(--color-text-tertiary);
+  --ink-placeholder: var(--color-text-quaternary);
+  --ink-on-brand: var(--color-text-on-brand);
+  --brand-25: #fff8fc;
+  --brand-50: var(--color-background-brand);
+  --brand-100: #ffdaed;
+  --brand-200: #ffb5d7;
+  --brand-300: #ff87c4;
+  --brand-400: var(--color-border-brand);
+  --brand-500: var(--color-background-brand_solid);
+  --brand-600: var(--color-text-brand);
+  --brand-700: #d60068;
+  --brand-800: #b50058;
+  --brand-900: #810040;
+  /* Console's text-brand hue provides AA white labels on solid actions. */
+  --brand-fill: var(--color-text-brand);
+  --brand-fill-hover: var(--brand-800);
+  --brand-fill-active: var(--brand-900);
+  --brand-pink: var(--brand-500);
+  --brand-pink-strong: var(--brand-700);
+  --brand-pink-soft: var(--brand-50);
+  --neutral-25: #fafafa;
+  --neutral-50: var(--color-background-secondary);
+  --neutral-100: var(--color-background-tertiary);
+  --neutral-200: var(--color-background-quaternary);
+  --neutral-300: var(--color-border-primary);
+  --neutral-400: #a3a3a3;
+  --neutral-450: #888888;
+  --neutral-500: var(--color-text-tertiary);
+  --neutral-600: #454545;
+  --neutral-700: var(--color-text-secondary);
+  --neutral-800: #222222;
+  --neutral-900: var(--color-text-primary);
+  --neutral-950: #111111;
+  --success-bg: var(--color-background-success);
+  --success-border: #b4e8cb;
+  --success-solid: var(--color-text-success);
+  --success-text: #176638;
+  --warning-bg: var(--color-background-warning);
+  --warning-border: #f4d7c6;
+  --warning-solid: var(--color-text-warning);
+  --warning-text: #a34215;
+  --danger-bg: var(--color-background-error);
+  --danger-border: #f7c8cc;
+  --danger-solid: var(--color-background-error_solid);
+  --danger-text: var(--color-text-error);
+  --info-bg: var(--color-utility-blue-50);
+  --info-border: #c4d2f2;
+  --info-solid: var(--color-utility-blue-700);
+  --info-text: var(--color-utility-blue-700);
+  --dept-sound-bg: var(--color-utility-yellow-50);
+  --dept-sound-fg: #84601f;
+  --dept-design-bg: var(--color-utility-purple-50);
+  --dept-design-fg: var(--color-utility-purple-700);
+  --dept-visual-bg: var(--color-utility-blue-50);
+  --dept-visual-fg: var(--color-utility-blue-700);
+  --dept-cell0-bg: var(--brand-50);
+  --dept-cell0-fg: var(--brand-700);
+  --paper: var(--surface);
+  --space-0: 0;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 20px;
   --space-6: 24px;
+  --space-7: 28px;
   --space-8: 32px;
-  --text-sm: 14px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --text-xs-line: 16px;
   --text-sm-line: 20px;
-  --text-md: 16px;
   --text-md-line: 24px;
-  --text-lg: 18px;
+  --text-base: 14px;
+  --text-base-line: 20px;
   --text-lg-line: 28px;
-  --text-xl: 20px;
-  --text-xl-line: 30px;
+  --text-xl-line: 28px;
+  --text-2xl-line: 38px;
   --text-display-xs: 24px;
   --text-display-xs-line: 32px;
-  --text-display-sm: 30px;
-  --text-display-sm-line: 38px;
+  --text-display-sm: 28px;
+  --text-display-sm-line: 36px;
+  --text-display-md: 32px;
+  --text-display-md-line: 38px;
+  --tracking-display: -0.01em;
+  --tracking-tight: -0.01em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
+  --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 8px;
-  --radius-lg: 12px;
-  --shadow-xs: 0 1px 2px rgb(10 13 18 / 5%);
-  --brand-pink: #f04494;
-  --brand-pink-strong: #ce246f;
-  --brand-pink-soft: #ffe5f1;
-  --ink: #181d27;
-  --muted: #535862;
-  --surface: #ffffff;
-  --canvas: #fafafa;
-  --line: #e9eaeb;
-  --color-text-primary: var(--ink);
-  --color-text-secondary: #414651;
-  --color-text-tertiary: var(--muted);
-  --color-bg-primary: var(--surface);
-  --color-bg-secondary: #fafafa;
-  --color-border-primary: #d5d7da;
-  --color-border-secondary: var(--line);
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 12px;
+  --radius-full: 999px;
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 5%);
+  --shadow-sm: 0 1px 3px rgb(0 0 0 / 6%);
+  --shadow-md: 0 4px 8px rgb(0 0 0 / 8%);
+  --shadow-lg: 0 10px 16px -4px rgb(0 0 0 / 10%);
+  --shadow-xl: 0 20px 24px -4px rgb(0 0 0 / 12%);
+  --shadow-brand: var(--shadow-xs);
+  --ring-brand: 0 0 0 3px rgb(223 0 108 / 16%);
+  --ring-danger: 0 0 0 3px rgb(200 36 46 / 18%);
+  --ring-neutral: 0 0 0 3px rgb(82 82 82 / 18%);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 280ms;
+  --sidebar-width: 256px;
+  --sidebar-width-compact: 56px;
+  --topbar-height: 48px;
+  --content-max: 1280px;
   font-family: var(--font-body);
   color: var(--ink);
   background: var(--canvas);
   font-synthesis: none;
-  text-rendering: optimizeLegibility;
+  font-optical-sizing: auto;
   -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
-  font-family: var(--font-body);
-  font-size: 16px;
-  line-height: 1.5;
+  font: 14px/20px var(--font-body);
+  color: var(--ink);
 }
 button,
 input,
@@ -63,12 +334,30 @@ select {
 h1,
 h2,
 h3,
-h4 {
+h4,
+h5 {
   font-family: var(--font-display);
+  color: var(--ink);
+}
+[data-numeric],
+.stat-value,
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-border-brand);
+  outline-offset: 2px;
 }
 ::selection {
-  background: #ffbedb;
-  color: #302433;
+  background: var(--brand-100);
+  color: var(--brand-900);
+}
+::placeholder {
+  color: var(--ink-placeholder);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
 }
 @media (prefers-reduced-motion: reduce) {
   *,

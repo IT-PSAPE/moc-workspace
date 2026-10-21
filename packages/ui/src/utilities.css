@@ -1,0 +1,11 @@
+/* One utility build for both apps and the shared UI package. Preflight is
+   intentionally omitted while legacy surfaces retain their established reset. */
+@import "tailwindcss/theme.css" theme(reference);
+@import "tailwindcss/utilities.css" source(none);
+@source "../../../apps/workspace/src";
+@source "../../../apps/portal/src";
+@source "./";
+
+@theme inline {
+  --font-sans: var(--font-body);
+}

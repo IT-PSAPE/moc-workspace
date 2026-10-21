@@ -7,8 +7,14 @@ import {
 } from "@tanstack/react-router";
 import { API_URL, api, useSession } from "@moc/client";
 import { useState } from "react";
-import { ArrowRight, ShieldCheck, RefreshCw } from "lucide-react";
-import type { Department, Session } from "@moc/shared";
+import {
+  AlertCircle,
+  ArrowRight,
+  Compass,
+  ShieldCheck,
+  RefreshCw,
+} from "lucide-react";
+import type { Session } from "@moc/shared";
 import Shell from "./Shell";
 import Dashboard from "./pages/Dashboard";
 import Departments from "./pages/Departments";
@@ -25,10 +31,13 @@ function Gate() {
   if (loading)
     return (
       <div className="access-screen">
-        <span className="access-wordmark">
-          MOC<span>.</span>
-        </span>
-        <p>Preparing your workspace…</p>
+        <div className="access-loading" role="status" aria-live="polite">
+          <span className="access-wordmark">
+            MOC<span>.</span>
+          </span>
+          <span className="access-spinner" aria-hidden="true" />
+          <p>Preparing your workspace…</p>
+        </div>
       </div>
     );
   if (!session?.user)
@@ -44,12 +53,13 @@ function Gate() {
             with a little clarity.
           </h1>
           <p>
-            Welcome to MOC Workspace. Sign in with your approved leader account
+            Welcome to MOC Workspace. Sign in with your approved member account
             to bring your team's work together.
           </p>
           {(error || failure) && (
             <p role="alert" className="access-error">
-              {error || failure}
+              <AlertCircle size={16} aria-hidden="true" />
+              <span>{error || failure}</span>
             </p>
           )}
           <a
@@ -91,12 +101,58 @@ function Gate() {
           )}
           <small>
             <ShieldCheck size={14} /> Access is reserved for approved MOC
-            leaders.
+            members.
           </small>
           <a href={import.meta.env.VITE_PORTAL_URL || "http://localhost:5174"}>
             Need support? Visit the public request portal →
           </a>
         </div>
+      </div>
+    );
+  if (!session.user.approved)
+    return (
+      <div className="access-screen">
+        <section className="access-card">
+          <ShieldCheck size={24} aria-hidden="true" />
+          <h1>Workspace access required</h1>
+          <p>
+            Your member account is not approved. Contact Cell 0 to confirm your
+            access.
+          </p>
+          {failure && (
+            <p className="access-error" role="alert">
+              {failure}
+            </p>
+          )}
+          <button
+            className="button button-primary"
+            onClick={() => void refresh()}
+          >
+            Check access
+          </button>
+          <button
+            className="button button-secondary"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              setFailure("");
+              try {
+                await api("/api/auth/logout", { method: "POST" });
+                window.location.assign("/login");
+              } catch (cause) {
+                setFailure(
+                  cause instanceof Error
+                    ? cause.message
+                    : "Could not sign out.",
+                );
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {busy ? "Signing out…" : "Sign out"}
+          </button>
+        </section>
       </div>
     );
   return (
@@ -108,10 +164,15 @@ function Gate() {
 const root = createRootRoute({
   component: Gate,
   notFoundComponent: () => (
-    <div className="card empty-state">
-      <h2>Page not found</h2>
-      <p>Let’s get back to your workspace.</p>
-      <a href="/">Open dashboard</a>
+    <div className="not-found-state">
+      <div className="card empty-state not-found-card">
+        <Compass size={28} strokeWidth={1.6} aria-hidden="true" />
+        <h2>Page not found</h2>
+        <p>Let’s get back to your workspace.</p>
+        <a className="button button-primary" href="/">
+          Open dashboard <ArrowRight size={16} />
+        </a>
+      </div>
     </div>
   ),
 });
@@ -130,14 +191,7 @@ const department = createRoute({
   path: "/departments/$department",
   component: () => {
     const { department: slug } = department.useParams();
-    const valid: Department[] = ["cell-0", "sound", "design", "visual-media"];
-    return valid.includes(slug as Department) ? (
-      <DepartmentPage department={slug as Department} />
-    ) : (
-      <div className="card empty-state">
-        Department not found. <a href="/departments">View departments</a>
-      </div>
-    );
+    return <DepartmentPage department={slug} />;
   },
 });
 const requests = createRoute({

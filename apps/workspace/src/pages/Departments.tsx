@@ -5,27 +5,17 @@ import {
   CheckCircle2,
   Filter,
   Search,
-  Settings,
-  SlidersHorizontal,
 } from "lucide-react";
-import {
-  DEPARTMENTS,
-  type Progress,
-  type Task,
-  type TaskStatus,
-} from "@moc/shared";
+import { type Progress, type Task, type TaskStatus } from "@moc/shared";
 import { useWorkspace } from "@moc/client";
-import { Badge, Button } from "@moc/ui";
+import { Badge, Button, Field } from "@moc/ui";
+import { FilterDrawer } from "../components/UiDialogs";
 import "./workflows.css";
 
 const labels: Record<string, string> = {
   pending: "Not started",
   "in-progress": "In progress",
   completed: "Completed",
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  urgent: "Urgent",
 };
 const statusTone = (status: TaskStatus) =>
   status === "completed"
@@ -45,14 +35,13 @@ export default function Departments() {
   const { state, user, act } = useWorkspace();
   const location = useLocation();
   const routeId = location.pathname.split("/").filter(Boolean)[1];
-  const params = new URLSearchParams(window.location.search);
-  const [query, setQuery] = useState(params.get("q") ?? "");
+  const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [actionError, setActionError] = useState("");
   const [savingTask, setSavingTask] = useState<string | null>(null);
   const canEdit = (task: Task) =>
     user?.department === "cell-0" || task.department === user?.department;
-  const allDepartments = DEPARTMENTS.filter(
+  const allDepartments = state.catalog.departments.filter(
     (department) => user?.department === "cell-0" || department.id !== "cell-0",
   );
   const selected = allDepartments.find(
@@ -128,16 +117,7 @@ export default function Departments() {
         <div>
           <h1>{selected ? selected.name : "Departments"}</h1>
         </div>
-        {user?.department === "cell-0" && (
-          <Button
-            variant="secondary"
-            onClick={() => {
-              window.location.href = "/settings";
-            }}
-          >
-            <Settings size={16} /> Team access
-          </Button>
-        )}
+
       </div>
       {!selected && (
         <div className="department-overview-grid">
@@ -159,7 +139,8 @@ export default function Departments() {
               : 0;
             return (
               <a
-                className={`overview-card overview-${department.id}`}
+                className="overview-card"
+                data-department-color={department.color}
                 key={department.id}
                 href={`/departments/${department.id}`}
               >
@@ -172,9 +153,6 @@ export default function Departments() {
                   <ArrowRight size={17} />
                 </div>
                 <h2>{department.name}</h2>
-                {department.groups.some(
-                  (group) => group !== department.name,
-                ) && <p>{department.groups.join(" · ")}</p>}
                 <div className="overview-metrics">
                   <span>
                     <strong>{active}</strong> active
@@ -184,7 +162,10 @@ export default function Departments() {
                   </span>
                 </div>
                 <div className="overview-progress">
-                  <div className="progress-track">
+                  <div
+                    className="progress-track"
+                    data-complete={progress === 100}
+                  >
                     <i style={{ width: `${progress}%` }} />
                   </div>
                   <span>{progress}% overall progress</span>
@@ -194,34 +175,35 @@ export default function Departments() {
           })}
         </div>
       )}
-      <section className="task-board">
+      <section
+        className="task-board"
+        aria-label={selected ? "Team tasks" : "Task overview"}
+      >
         <div className="task-board-head">
           <div>
             <h2>{selected ? "Team tasks" : "Task overview"}</h2>
           </div>
-          <div className="task-filters">
-            <label className="table-search">
+          <div className="task-filters !w-fit !min-w-0 !max-w-full !flex-wrap">
+            <label className="table-search !w-[320px] !max-w-full !flex-none">
               <Search size={16} />
               <input
+                className="!min-w-0 !w-full"
                 aria-label="Search tasks"
                 placeholder="Search by title or ministry"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
               />
             </label>
-            <label className="filter-select">
-              <SlidersHorizontal size={15} />
-              <select
-                aria-label="Filter tasks by status"
-                value={filter}
-                onChange={(event) => setFilter(event.target.value)}
-              >
-                <option value="all">All statuses</option>
-                <option value="pending">Not started</option>
-                <option value="in-progress">In progress</option>
-                <option value="completed">Completed</option>
-              </select>
-            </label>
+            <FilterDrawer activeCount={filter === "all" ? 0 : 1} onReset={() => setFilter("all")}>
+              <Field label="Status">
+                <select aria-label="Filter tasks by status" value={filter} onChange={(event) => setFilter(event.target.value)}>
+                  <option value="all">All statuses</option>
+                  <option value="pending">Not started</option>
+                  <option value="in-progress">In progress</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </Field>
+            </FilterDrawer>
           </div>
         </div>
         <div className="task-summary">
@@ -240,15 +222,14 @@ export default function Departments() {
         </div>
         {visibleTasks.length ? (
           <div className="task-table-wrap">
-            <table className="task-table">
+            <table className="task-table responsive-data-table">
               <thead>
                 <tr>
-                  <th>Task</th>
-                  <th>Department</th>
-                  <th>Due date</th>
-                  <th>Priority</th>
-                  <th>Status</th>
-                  <th>
+                  <th scope="col">Task</th>
+                  <th scope="col">Department</th>
+                  <th scope="col">Due date</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">
                     <span className="sr-only">Actions</span>
                   </th>
                 </tr>
@@ -259,49 +240,41 @@ export default function Departments() {
                   .sort((a, b) => a.dueAt.localeCompare(b.dueAt))
                   .map((task) => (
                     <tr key={task.id}>
-                      <td>
+                      <td data-label="Task">
                         <div className="task-title-cell">
                           <strong>{task.title}</strong>
                           <span>
                             {task.ministry} <i>·</i> {task.subTeam}
                           </span>
-                          <div className="table-progress">
-                            <div className="progress-track">
-                              <i style={{ width: `${task.progress}%` }} />
-                            </div>
-                            <small>{task.progress}%</small>
-                          </div>
+
                         </div>
                       </td>
-                      <td>
+                      <td data-label="Department">
                         <span className="team-chip">
-                          <i className={`team-dot team-${task.department}`} />
+                          <i
+                            className="team-dot"
+                            data-department-color={
+                              state.catalog.departments.find(
+                                (item) => item.id === task.department,
+                              )?.color
+                            }
+                          />
                           {
-                            DEPARTMENTS.find(
+                            state.catalog.departments.find(
                               (department) => department.id === task.department,
                             )?.name
                           }
                         </span>
                       </td>
-                      <td className="due-date-cell">{date(task.dueAt)}</td>
-                      <td>
-                        <Badge
-                          tone={
-                            task.priority === "urgent" ||
-                            task.priority === "high"
-                              ? "gold"
-                              : "neutral"
-                          }
-                        >
-                          {labels[task.priority]}
-                        </Badge>
+                      <td className="due-date-cell" data-label="Due date">
+                        {date(task.dueAt)}
                       </td>
-                      <td>
+                      <td data-label="Status">
                         <Badge tone={statusTone(task.status)}>
                           {labels[task.status]}
                         </Badge>
                       </td>
-                      <td>
+                      <td data-label="Actions">
                         <button
                           className="advance-task"
                           type="button"

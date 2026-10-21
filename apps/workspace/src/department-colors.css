@@ -1,0 +1,32 @@
+[data-department-color="pink"] {
+  --department-fg: var(--dept-cell0-fg);
+  --department-bg: var(--dept-cell0-bg);
+}
+[data-department-color="purple"] {
+  --department-fg: var(--dept-design-fg);
+  --department-bg: var(--dept-design-bg);
+}
+[data-department-color="amber"] {
+  --department-fg: var(--dept-sound-fg);
+  --department-bg: var(--dept-sound-bg);
+}
+[data-department-color="blue"] {
+  --department-fg: var(--dept-visual-fg);
+  --department-bg: var(--dept-visual-bg);
+}
+[data-department-color="green"] {
+  --department-fg: var(--success-text);
+  --department-bg: var(--success-bg);
+}
+[data-department-color="teal"] {
+  --department-fg: #115e59;
+  --department-bg: #f0fdfa;
+}
+.department-dot[data-department-color],
+.team-dot[data-department-color] {
+  background: var(--department-fg, var(--muted));
+}
+.overview-card[data-department-color] .overview-mark {
+  background: var(--department-bg, var(--neutral-100));
+  color: var(--department-fg, var(--muted));
+}

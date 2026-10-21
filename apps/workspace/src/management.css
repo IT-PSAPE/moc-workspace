@@ -1,0 +1,155 @@
+.management-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.management-tabs button {
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+}
+.management-tabs button[aria-pressed="true"] {
+  border-bottom-color: var(--brand-fill);
+  color: var(--ink);
+  font-weight: 600;
+}
+.management-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.management-heading h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.management-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.management-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+}
+.management-row + .management-row {
+  border-top: 1px solid var(--line);
+}
+.management-row > div:first-child {
+  min-width: 0;
+}
+.management-row strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+.management-row p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.management-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.management-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.management-form fieldset {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  min-width: 0;
+}
+.management-form legend {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.management-form .form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+.management-form .checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.management-error {
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--danger-border);
+  border-radius: 6px;
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  font-size: 14px;
+}
+.management-empty {
+  padding: 20px 12px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.management-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.management-group input {
+  flex: 1;
+  min-width: 0;
+}
+.management-note {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0;
+}
+.modal-panel.management-drawer {
+  inset: 0 0 0 auto;
+  transform: none;
+  width: min(560px, 100vw);
+  height: 100dvh;
+  max-height: 100dvh;
+  border-radius: 0;
+  animation: moc-fade var(--duration-base) var(--ease-out);
+}
+.management-drawer .modal-content {
+  padding: 16px;
+}
+@media (width < 768px) {
+  .management-row {
+    gap: 8px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .management-row > div:first-child {
+    flex: 1 1 100%;
+  }
+  .management-tabs button {
+    min-height: 44px;
+  }
+}
+.management-form h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 24px;
+}

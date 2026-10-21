@@ -1,38 +1,35 @@
+import { lazy, Suspense } from "react";
 import { Link } from "@tanstack/react-router";
 import {
+  AlertTriangle,
   ArrowRight,
   CalendarDays,
+  CheckCircle2,
   Clapperboard,
   Clock3,
   FolderOpen,
+  ListChecks,
   Music2,
   Palette,
-  TrendingUp,
 } from "lucide-react";
-import { DEPARTMENTS } from "@moc/shared";
 import { useWorkspace } from "@moc/client";
 import { Badge, Button } from "@moc/ui";
+import "./dashboard.css";
 
-const productionDepartments = DEPARTMENTS.filter(
-  (department) => department.id !== "cell-0",
-);
+const PulseChart = lazy(() => import("./PulseChart"));
+
 const departmentIcons: Record<string, typeof Music2> = {
   sound: Music2,
   "visual-media": Clapperboard,
   design: Palette,
 };
-const labels: Record<string, string> = {
-  sound: "Sound",
-  "visual-media": "Visual Media",
-  design: "Design",
-};
-
 function formatDay(value: string) {
   return new Intl.DateTimeFormat("en-ZA", {
     day: "numeric",
     month: "short",
   }).format(new Date(value));
 }
+
 function isSameMonth(value: string, from: Date) {
   const date = new Date(value);
   return (
@@ -40,6 +37,7 @@ function isSameMonth(value: string, from: Date) {
     date.getMonth() === from.getMonth()
   );
 }
+
 function shortRelative(value: string) {
   const diff = Math.floor(
     (Date.now() - new Date(value).getTime()) / 86_400_000,
@@ -50,71 +48,17 @@ function shortRelative(value: string) {
   return formatDay(value);
 }
 
-function PulseChart({
-  completed,
-  months,
-}: {
-  completed: number[];
-  months: string[];
-}) {
-  const normalized = completed.map((value) =>
-    Math.max(12, 88 - Math.min(value, 12) * 6),
-  );
-  const points = normalized.map((y, i) => `${i * 48},${y}`).join(" ");
-  const area = `0,100 ${points} 336,100`;
-  return (
-    <div className="chart-wrap">
-      <svg
-        className="pulse-chart"
-        viewBox="0 0 336 110"
-        preserveAspectRatio="none"
-        role="img"
-        aria-label="Completed tasks over the last eight months"
-      >
-        <defs>
-          <linearGradient id="pulseFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#789789" stopOpacity=".25" />
-            <stop offset="1" stopColor="#789789" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <path
-          d="M0 27h336M0 63h336M0 99h336"
-          stroke="#e9e7e0"
-          strokeDasharray="3 5"
-        />
-        <polygon points={area} fill="url(#pulseFill)" />
-        <polyline
-          points={points}
-          fill="none"
-          stroke="#365f4d"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        {normalized.map((y, i) => (
-          <circle
-            key={i}
-            cx={i * 48}
-            cy={y}
-            r="3.5"
-            fill="#fff"
-            stroke="#365f4d"
-            strokeWidth="2"
-          />
-        ))}
-      </svg>
-      <div className="chart-months">
-        {months.map((month, i) => (
-          <span key={`${month}-${i}`}>{month}</span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export default function Dashboard() {
   const { state, user } = useWorkspace();
   const tasks = state?.tasks ?? [];
+  const departments = state?.catalog?.departments ?? [];
+  const departmentsById = new Map(
+    departments.map((department) => [department.id, department]),
+  );
+  const departmentName = (id: string) => departmentsById.get(id)?.name ?? id;
+  const productionDepartments = departments.filter(
+    (department) => department.id !== "cell-0",
+  );
   const requests = state?.requests ?? [];
   const activities = state?.activities ?? [];
   const now = new Date();
@@ -143,13 +87,6 @@ export default function Dashboard() {
   const pendingRequests = requests.filter(
     (request) => request.status === "pending",
   ).length;
-  const name = user?.name?.split(" ")[0] ?? "there";
-  const greeting =
-    now.getHours() < 12
-      ? "Good morning"
-      : now.getHours() < 17
-        ? "Good afternoon"
-        : "Good evening";
   const departmentTasks = (id: string) =>
     tasks.filter((task) => task.department === id);
   const upcoming = tasks
@@ -159,28 +96,32 @@ export default function Dashboard() {
     )
     .sort((a, b) => a.dueAt.localeCompare(b.dueAt))
     .slice(0, 4);
+  const activeTasks = tasks
+    .filter((task) => task.status !== "completed")
+    .sort((a, b) => b.progress - a.progress)
+    .slice(0, 3);
+  const nextDeadlineTask = upcoming[0];
   const chartData = Array.from({ length: 8 }, (_, i) => {
     const month = new Date(now.getFullYear(), now.getMonth() - (7 - i), 1);
     return tasks.filter(
-      (task) => task.completedAt && isSameMonth(task.completedAt, month),
+      (task) =>
+        task.status === "completed" &&
+        task.completedAt &&
+        isSameMonth(task.completedAt, month),
     ).length;
   });
   const chartMonths = Array.from({ length: 8 }, (_, i) =>
-    new Intl.DateTimeFormat("en", { month: "short" }).format(
+    new Intl.DateTimeFormat("en", { month: "short", year: "numeric" }).format(
       new Date(now.getFullYear(), now.getMonth() - (7 - i), 1),
     ),
   );
-
   return (
     <div className="dashboard-page">
-      <div className="page-heading dashboard-heading">
-        <div>
-          <h1>
-            {greeting}, {name}
-          </h1>
-          <p>Here’s what’s happening across your creative teams.</p>
+      <header className="dashboard-header">
+        <div className="dashboard-heading">
+          <h1>Overview</h1>
         </div>
-        <div className="heading-actions">
+        <div className="dashboard-actions">
           <Button
             variant="secondary"
             onClick={() => {
@@ -200,365 +141,328 @@ export default function Dashboard() {
             </Button>
           )}
         </div>
-      </div>
+      </header>
 
-      <section className="quote-banner">
-        <div className="quote-copy">
-          <blockquote>“Fulfil your duty with faith and excellence.”</blockquote>
-          <span>Chairman Man-Hee Lee</span>
-        </div>
-      </section>
-
-      <section className="stats-grid" aria-label="Workspace statistics">
-        <article className="stat-card">
-          <div className="stat-top">
-            <span>Due this week</span>
+      <section className="dashboard-stats" aria-label="Workspace statistics">
+        <article className="dashboard-stat">
+          <div className="dashboard-stat-label">
+            <Clock3 size={16} /> Due this week
           </div>
-          <div className="stat-value">
+          <div className="dashboard-stat-value">
             {dueWeek.length}
-            <span className="stat-unit">tasks</span>
-          </div>
-          <div className="stat-foot">
-            <span>
-              {dueWeek.length
-                ? "Keep an eye on these deadlines"
-                : "Your week is looking clear"}
-            </span>
+            <span>tasks</span>
           </div>
         </article>
-        <article className="stat-card">
-          <div className="stat-top">
-            <span>Completed this month</span>
+        <article className="dashboard-stat">
+          <div className="dashboard-stat-label">
+            <CheckCircle2 size={16} /> Completed this month
           </div>
-          <div className="stat-value">
+          <div className="dashboard-stat-value">
             {doneMonth.length}
-            <span className="stat-unit">tasks</span>
-          </div>
-          <div className="stat-foot positive">
-            <span>Great work, team</span>
+            <span>tasks</span>
           </div>
         </article>
         <article
-          className={`stat-card ${overdueTasks.length ? "stat-alert" : ""}`}
+          className={`dashboard-stat ${overdueTasks.length ? "is-overdue" : ""}`}
         >
-          <div className="stat-top">
-            <span>Overdue</span>
+          <div className="dashboard-stat-label">
+            <AlertTriangle size={16} /> Overdue
           </div>
-          <div className="stat-value">
+          <div className="dashboard-stat-value">
             {overdueTasks.length}
-            <span className="stat-unit">tasks</span>
-          </div>
-          <div className="stat-foot">
-            <span>
-              {overdueTasks.length
-                ? "Needs a little attention"
-                : "Everything is on track"}
-            </span>
+            <span>tasks</span>
           </div>
         </article>
-        <article className="stat-card">
-          <div className="stat-top">
-            <span>Pending tasks</span>
+        <article className="dashboard-stat">
+          <div className="dashboard-stat-label">
+            <ListChecks size={16} /> Pending tasks
           </div>
-          <div className="stat-value">
+          <div className="dashboard-stat-value">
             {tasks.filter((task) => task.status === "pending").length}
-            <span className="stat-unit">tasks</span>
+            <span>tasks</span>
           </div>
-          <div className="stat-foot">
-            {user?.department === "cell-0" && pendingRequests > 0 ? (
-              <Link to="/requests">
-                {pendingRequests} requests to review <ArrowRight size={14} />
-              </Link>
-            ) : (
-              <span>Ready to get underway</span>
-            )}
-          </div>
+          {user?.department === "cell-0" && pendingRequests > 0 ? (
+            <Link to="/requests" className="dashboard-stat-link">
+              {pendingRequests} requests to review <ArrowRight size={14} />
+            </Link>
+          ) : null}
         </article>
       </section>
 
-      <div className="dashboard-columns">
-        <section className="departments-section">
-          <div className="section-heading">
-            <div>
-              <h2>Departments</h2>
+      <div className="dashboard-layout">
+        <div className="dashboard-primary">
+          <section className="dashboard-section">
+            <div className="dashboard-section-heading">
+              <div>
+                <h2>Departments</h2>
+              </div>
+              <Link to="/departments" className="dashboard-text-link">
+                All departments <ArrowRight size={15} />
+              </Link>
             </div>
-            <Link to="/departments" className="text-link">
-              All departments <ArrowRight size={15} />
-            </Link>
-          </div>
-          <div className="department-grid">
-            {productionDepartments.map((department) => {
-              const items = departmentTasks(department.id);
-              const inProgress = items.filter(
-                (task) => task.status === "in-progress",
-              ).length;
-              const completed = items.filter(
-                (task) => task.status === "completed",
-              ).length;
-              const active = items.filter(
-                (task) => task.status !== "completed",
-              ).length;
-              const progress = items.length
-                ? Math.round(
-                    items.reduce((total, task) => total + task.progress, 0) /
-                      items.length,
-                  )
-                : 0;
-              return (
-                <a
-                  href={`/departments/${department.id}`}
-                  key={department.id}
-                  className="department-card"
-                >
-                  <div
-                    className="department-symbol symbol-pink"
-                    aria-hidden="true"
+            <div className="dashboard-departments">
+              {productionDepartments.map((department) => {
+                const items = departmentTasks(department.id);
+                const inProgress = items.filter(
+                  (task) => task.status === "in-progress",
+                ).length;
+                const completed = items.filter(
+                  (task) => task.status === "completed",
+                ).length;
+                const active = items.filter(
+                  (task) => task.status !== "completed",
+                ).length;
+                const progress = items.length
+                  ? Math.round(
+                      items.reduce((total, task) => total + task.progress, 0) /
+                        items.length,
+                    )
+                  : 0;
+                const Icon = departmentIcons[department.id] ?? FolderOpen;
+                return (
+                  <a
+                    href={`/departments/${department.id}`}
+                    key={department.id}
+                    className="dashboard-department"
+                    data-department-color={department.color}
                   >
-                    {(() => {
-                      const Icon = departmentIcons[department.id] ?? FolderOpen;
-                      return <Icon size={20} strokeWidth={1.9} />;
-                    })()}
-                  </div>
-                  <h3>{department.name}</h3>
-                  <div className="department-counts">
-                    <span>
-                      <b>{active}</b> active
-                    </span>
-                    <span>
-                      <b>{completed}</b> done
-                    </span>
-                  </div>
-                  <div className="mini-progress">
-                    <div>
-                      <span>Overall progress</span>
+                    <div className="dashboard-department-top">
+                      <span className="dashboard-department-icon">
+                        <Icon size={17} strokeWidth={1.8} />
+                      </span>
+                      <span className="dashboard-department-count">
+                        {active} active
+                      </span>
+                    </div>
+                    <h3>{department.name}</h3>
+                    <div className="dashboard-department-meta">
+                      <span>
+                        {completed} completed · {inProgress} in progress
+                      </span>
                       <b>{progress}%</b>
                     </div>
-                    <div className="progress-track">
+                    <div className="dashboard-progress">
                       <i style={{ width: `${progress}%` }} />
                     </div>
-                  </div>
-                  <div className="department-card-foot">
-                    <span>
-                      {inProgress
-                        ? `${inProgress} in progress`
-                        : "View department tasks"}
-                    </span>
-                    <ArrowRight size={15} />
-                  </div>
-                </a>
-              );
-            })}
-          </div>
-          <section className="projects-panel">
-            <div className="section-heading compact">
+                  </a>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="dashboard-section dashboard-projects">
+            <div className="dashboard-section-heading">
               <div>
-                <h2>Active projects</h2>
+                <h2>Active work</h2>
               </div>
-              <Link to="/departments" className="text-link">
+              <Link to="/departments" className="dashboard-text-link">
                 View all <ArrowRight size={15} />
               </Link>
             </div>
-            <div className="project-list">
-              {tasks
-                .filter((task) => task.status !== "completed")
-                .sort((a, b) => b.progress - a.progress)
-                .slice(0, 3)
-                .map((task) => (
+            <div className="dashboard-project-list">
+              {activeTasks.map((task) => {
+                const Icon = departmentIcons[task.department] ?? FolderOpen;
+                return (
                   <a
                     href={`/departments/${task.department}`}
-                    className="project-row"
+                    className="dashboard-project-row"
+                    data-department-color={
+                      departmentsById.get(task.department)?.color
+                    }
                     key={task.id}
                   >
-                    <span className="project-thumb" aria-hidden="true">
-                      {(() => {
-                        const Icon =
-                          departmentIcons[task.department] ?? FolderOpen;
-                        return <Icon size={20} strokeWidth={1.9} />;
-                      })()}
+                    <span className="dashboard-project-icon">
+                      <Icon size={17} strokeWidth={1.8} />
                     </span>
-                    <div className="project-meta">
+                    <div className="dashboard-project-copy">
                       <strong>{task.title}</strong>
                       <span>
-                        {task.ministry} <i>·</i>{" "}
-                        {labels[task.department] ?? task.department}
+                        {task.ministry}
+                        <i>·</i>
+                        {task.subTeam}
                       </span>
-                      <div className="project-progress">
-                        <div className="progress-track">
+                    </div>
+                    <div className="dashboard-project-state">
+                      <div className="dashboard-project-progress">
+                        <div className="dashboard-progress">
                           <i style={{ width: `${task.progress}%` }} />
                         </div>
                         <small>{task.progress}%</small>
                       </div>
+                      <Badge
+                        tone="neutral"
+                      >
+                        {task.status === "pending"
+                          ? "Not started"
+                          : "In progress"}
+                      </Badge>
                     </div>
-                    <Badge
-                      tone={
-                        task.priority === "urgent" || task.priority === "high"
-                          ? "gold"
-                          : "neutral"
-                      }
-                    >
-                      {task.status === "pending"
-                        ? "Not started"
-                        : "In progress"}
-                    </Badge>
-                    <ArrowRight className="project-arrow" size={16} />
+                    <ArrowRight className="dashboard-row-arrow" size={15} />
                   </a>
-                ))}
-              {!tasks.some((task) => task.status !== "completed") && (
-                <div className="empty-state">No active projects just yet.</div>
+                );
+              })}
+              {!activeTasks.length && (
+                <div className="dashboard-empty">No active tasks.</div>
               )}
             </div>
           </section>
-        </section>
-        <aside className="right-column">
-          <section className="side-panel focus-panel">
-            <div className="section-heading compact">
+
+          <section className="dashboard-section dashboard-pulse">
+            <div className="dashboard-section-heading">
               <div>
-                <h2>One thing at a time</h2>
+                <h2>Ministry pulse</h2>
+                <p>Completed tasks · Past eight months</p>
+              </div>
+              <div className="dashboard-pulse-total">
+                <strong>
+                  {tasks.filter((task) => task.status === "completed").length}
+                </strong>
+                <span>total completed</span>
               </div>
             </div>
-            {(() => {
-              const focus = [...tasks]
-                .filter((task) => task.status !== "completed")
-                .sort(
-                  (a, b) =>
-                    (a.priority === "urgent"
-                      ? -2
-                      : a.priority === "high"
-                        ? -1
-                        : 0) -
-                      (b.priority === "urgent"
-                        ? -2
-                        : b.priority === "high"
-                          ? -1
-                          : 0) || a.dueAt.localeCompare(b.dueAt),
-                )[0];
-              return focus ? (
-                <a
-                  href={`/departments/${focus.department}`}
-                  className="focus-task"
-                >
-                  <strong>{focus.title}</strong>
-                  <span>
-                    {labels[focus.department] ?? focus.department} <i>·</i> Due{" "}
-                    {formatDay(focus.dueAt)}
-                  </span>
-                  <div className="focus-progress">
-                    <div className="progress-track">
-                      <i style={{ width: `${focus.progress}%` }} />
-                    </div>
-                    <small>{focus.progress}% complete</small>
-                  </div>
-                  <span className="focus-open">
-                    Open task <ArrowRight size={13} />
-                  </span>
-                </a>
-              ) : (
-                <div className="empty-state">
-                  You’re all caught up. Take a breath.
+            <Suspense
+              fallback={
+                <div className="dashboard-chart-wrap" role="status">
+                  Loading chart…
                 </div>
-              );
-            })()}
+              }
+            >
+              <PulseChart completed={chartData} months={chartMonths} />
+            </Suspense>
           </section>
-          <section className="side-panel activity-panel">
-            <div className="section-heading compact">
+        </div>
+
+        <aside className="dashboard-secondary">
+          <section className="dashboard-section dashboard-focus">
+            <div className="dashboard-section-heading">
+              <div>
+                <h2>Next deadline</h2>
+              </div>
+            </div>
+            {nextDeadlineTask ? (
+              <a
+                href={`/departments/${nextDeadlineTask.department}`}
+                className="dashboard-focus-task"
+                data-department-color={
+                  departmentsById.get(nextDeadlineTask.department)?.color
+                }
+              >
+                <span className="dashboard-focus-label">
+                  {Date.parse(nextDeadlineTask.dueAt) - now.getTime() <=
+                  7 * 86_400_000
+                    ? "Due this week"
+                    : "Upcoming"}
+                </span>
+                <strong>{nextDeadlineTask.title}</strong>
+                <span className="dashboard-focus-meta">
+                  {departmentName(nextDeadlineTask.department)}
+                  <i>·</i>
+                  {nextDeadlineTask.subTeam}
+                  <i>·</i>Due {formatDay(nextDeadlineTask.dueAt)}
+                </span>
+                <div className="dashboard-focus-progress">
+                  <div className="dashboard-progress">
+                    <i style={{ width: `${nextDeadlineTask.progress}%` }} />
+                  </div>
+                  <small>{nextDeadlineTask.progress}% complete</small>
+                </div>
+                <span className="dashboard-focus-open">
+                  Open task <ArrowRight size={13} />
+                </span>
+              </a>
+            ) : (
+              <div className="dashboard-empty">
+                No next deadline.
+              </div>
+            )}
+          </section>
+
+          <section className="dashboard-section dashboard-activity">
+            <div className="dashboard-section-heading">
               <div>
                 <h2>Recent activity</h2>
               </div>
             </div>
-            <div className="activity-list">
+            <div className="dashboard-activity-list">
               {activities
                 .slice()
                 .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
                 .slice(0, 4)
                 .map((activity) => (
-                  <div className="activity-item" key={activity.id}>
-                    <div className="activity-text">
+                  <div className="dashboard-activity-item" key={activity.id}>
+                    <span className="dashboard-activity-dot" />
+                    <div>
                       <p>{activity.text}</p>
                       <span>
-                        {shortRelative(activity.createdAt)} <i>·</i>{" "}
-                        {labels[activity.department] ?? "Cell 0"}
+                        {shortRelative(activity.createdAt)}
+                        <i>·</i>
+                        {departmentName(activity.department)}
                       </span>
                     </div>
                   </div>
                 ))}
               {!activities.length && (
-                <div className="empty-state">
-                  Updates will show here as work progresses.
+                <div className="dashboard-empty">
+                  No recent activity.
                 </div>
               )}
             </div>
-            <Link to="/departments" className="panel-link">
+            <Link to="/departments" className="dashboard-panel-link">
               View team work <ArrowRight size={14} />
             </Link>
           </section>
-          <section className="side-panel deadlines-panel">
-            <div className="section-heading compact">
+
+          <section className="dashboard-section dashboard-deadlines">
+            <div className="dashboard-section-heading">
               <div>
                 <h2>Upcoming deadlines</h2>
               </div>
               <Link
                 to="/calendar"
-                className="icon-button"
+                className="dashboard-calendar-link"
                 aria-label="Open calendar"
               >
-                <CalendarDays size={17} />
+                <CalendarDays size={16} />
               </Link>
             </div>
-            <div className="deadline-list">
+            <div className="dashboard-deadline-list">
               {upcoming.map((task) => (
                 <a
                   href={`/departments/${task.department}`}
-                  className="deadline-item"
+                  className="dashboard-deadline"
                   key={task.id}
+                  data-department-color={
+                    departmentsById.get(task.department)?.color
+                  }
                 >
-                  <div className="deadline-date">
+                  <span className="dashboard-deadline-date">
                     <strong>{new Date(task.dueAt).getDate()}</strong>
-                    <span>
+                    <small>
                       {new Intl.DateTimeFormat("en", { month: "short" }).format(
                         new Date(task.dueAt),
                       )}
-                    </span>
-                  </div>
-                  <div className="deadline-copy">
+                    </small>
+                  </span>
+                  <span className="dashboard-deadline-copy">
                     <strong>{task.title}</strong>
-                    <span>
-                      {labels[task.department] ?? task.department} <i>·</i>{" "}
+                    <small>
+                      {departmentName(task.department)}
+                      <i>·</i>
                       {task.ministry}
-                    </span>
-                  </div>
+                    </small>
+                  </span>
                 </a>
               ))}
               {!upcoming.length && (
-                <div className="empty-state">No upcoming deadlines.</div>
+                <div className="dashboard-empty">No upcoming deadlines.</div>
               )}
             </div>
-            <Link to="/calendar" className="panel-link">
+            <Link to="/calendar" className="dashboard-panel-link">
               Open calendar <ArrowRight size={14} />
             </Link>
           </section>
         </aside>
       </div>
-      <section className="pulse-panel">
-        <div className="pulse-copy">
-          <h2>Ministry pulse</h2>
-          <p>Completed tasks over the past eight months.</p>
-          <div className="pulse-total">
-            <strong>
-              {tasks.filter((task) => task.status === "completed").length}
-            </strong>
-            <span>total completed</span>
-          </div>
-        </div>
-        <PulseChart completed={chartData} months={chartMonths} />
-        <div className="pulse-aside">
-          <span className="pulse-trend">
-            <TrendingUp size={15} /> {doneMonth.length} this month
-          </span>
-          <span className="pulse-note">
-            Every detail helps ministry move forward.
-          </span>
-        </div>
-      </section>
     </div>
   );
 }

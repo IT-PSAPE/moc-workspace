@@ -1,6 +1,5 @@
-import { useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowUpRight,
   CalendarDays,
   Check,
   Circle,
@@ -9,21 +8,19 @@ import {
   LockKeyhole,
   Plus,
   Search,
-  SlidersHorizontal,
   X,
 } from "lucide-react";
-import { Badge, Button, Field, Modal } from "@moc/ui";
+import { Button, Field, Modal } from "@moc/ui";
+import { FilterDrawer } from "../components/UiDialogs";
 import {
-  DEPARTMENTS,
-  SERVICES,
   type Department as DepartmentId,
-  type Priority,
   type Progress,
   type SubTeam,
   type Task,
   type TaskStatus,
 } from "@moc/shared";
 import { useWorkspace } from "@moc/client";
+import TaskDetails from "../TaskDetails";
 import "./workflows.css";
 
 const columns: {
@@ -35,12 +32,6 @@ const columns: {
   { id: "in-progress", label: "In progress", tone: "green" },
   { id: "completed", label: "Completed", tone: "neutral" },
 ];
-const priorityTone: Record<Priority, "neutral" | "gold" | "red" | "green"> = {
-  low: "neutral",
-  medium: "green",
-  high: "gold",
-  urgent: "red",
-};
 const progressSteps: Progress[] = [0, 25, 50, 75, 100];
 const dateLabel = (value: string) =>
   new Intl.DateTimeFormat("en-ZA", {
@@ -59,28 +50,42 @@ export default function DepartmentPage({
   department: DepartmentId;
 }) {
   const { state, user, loading, error, act, refresh } = useWorkspace();
-  const departmentInfo = DEPARTMENTS.find((item) => item.id === department)!;
+  const departmentInfo = state.catalog?.departments.find(
+    (item) => item.id === department,
+  );
+  const departmentGroups = departmentInfo?.groups ?? [];
   const isCell0 = user?.department === "cell-0";
+  const isCell0Leader = Boolean(isCell0 && user?.isLeader);
   const canEdit = Boolean(
-    user?.approved && (isCell0 || user?.department === department),
+    user?.approved && (isCell0Leader || user?.department === department),
   );
   const [search, setSearch] = useState("");
   const [teamFilter, setTeamFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [priorityFilter, setPriorityFilter] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
-  const [note, setNote] = useState("");
+  const actionFeedbackRef = useRef<HTMLDivElement>(null);
+  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
+  const [dropTargetStatus, setDropTargetStatus] = useState<TaskStatus | null>(
+    null,
+  );
   const [form, setForm] = useState({
     title: "",
-    subTeam: departmentInfo.groups[0] as SubTeam,
-    priority: "medium" as Priority,
+    subTeam: "" as SubTeam,
     dueAt: "",
     instructions: "",
     notes: "",
   });
+
+  useEffect(() => {
+    const nextGroup = departmentGroups.includes(form.subTeam)
+      ? form.subTeam
+      : departmentGroups[0] ?? "";
+    if (nextGroup !== form.subTeam)
+      setForm((current) => ({ ...current, subTeam: nextGroup }));
+  }, [departmentGroups, form.subTeam]);
 
   const tasks = useMemo(
     () => (state?.tasks ?? []).filter((task) => task.department === department),
@@ -99,15 +104,19 @@ export default function DepartmentPage({
         return (
           matchesSearch &&
           (teamFilter === "all" || task.subTeam === teamFilter) &&
-          (statusFilter === "all" || task.status === statusFilter) &&
-          (priorityFilter === "all" || task.priority === priorityFilter)
+          (statusFilter === "all" || task.status === statusFilter)
         );
       }),
-    [tasks, search, teamFilter, statusFilter, priorityFilter],
+    [tasks, search, teamFilter, statusFilter],
   );
-  const taskService = (task: Task) =>
-    SERVICES.find((service) => service.id === task.service)?.name ??
-    task.service;
+  useEffect(() => {
+    if (!feedback && !error) return;
+    const alert = actionFeedbackRef.current;
+    if (!alert) return;
+    alert.scrollIntoView({ block: "nearest" });
+    alert.focus({ preventScroll: true });
+  }, [error, feedback, createOpen, selectedId]);
+
   const run = async (operation: () => Promise<void>) => {
     setBusy(true);
     setFeedback("");
@@ -126,25 +135,59 @@ export default function DepartmentPage({
   };
   const updateTask = (
     task: Task,
-    change: { progress?: Progress; status?: TaskStatus; priority?: Priority },
+    change: { progress?: Progress; status?: TaskStatus },
   ) => run(() => act({ type: "update-task", taskId: task.id, ...change }));
+  const progressForDrop = (task: Task, status: TaskStatus): Progress =>
+    status === "completed"
+      ? 100
+      : status === "pending"
+        ? 0
+        : task.progress === 0
+          ? 25
+          : task.progress === 100
+            ? 75
+            : task.progress;
+  const matchesDropFilters = (task: Task) =>
+    (task.title + " " + task.ministry)
+      .toLowerCase()
+      .includes(search.toLowerCase()) &&
+    (teamFilter === "all" || task.subTeam === teamFilter);
+  const handleDragOver = (event: React.DragEvent, status: TaskStatus) => {
+    const task = draggingTaskId
+      ? tasks.find((item) => item.id === draggingTaskId)
+      : undefined;
+    if (!canEdit || !task || task.status === status) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDropTargetStatus(status);
+  };
+  const handleDragLeave = (
+    event: React.DragEvent,
+    status: TaskStatus,
+  ) => {
+    const nextTarget = event.relatedTarget;
+    if (
+      dropTargetStatus === status &&
+      !(nextTarget instanceof Node && event.currentTarget.contains(nextTarget))
+    )
+      setDropTargetStatus(null);
+  };
   const handleDrop = (event: React.DragEvent, status: TaskStatus) => {
     event.preventDefault();
     const taskId = event.dataTransfer.getData("text/task");
     const task = tasks.find((item) => item.id === taskId);
+    setDraggingTaskId(null);
+    setDropTargetStatus(null);
     if (task && canEdit && task.status !== status) {
-      const progress =
-        status === "completed"
-          ? 100
-          : status === "pending"
-            ? 0
-            : task.progress === 0
-              ? 25
-              : task.progress === 100
-                ? 75
-                : task.progress;
-      void updateTask(task, { status, progress });
+      void updateTask(task, {
+        status,
+        progress: progressForDrop(task, status),
+      });
     }
+  };
+  const resetDrag = () => {
+    setDraggingTaskId(null);
+    setDropTargetStatus(null);
   };
   const createTask = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -160,19 +203,24 @@ export default function DepartmentPage({
       setCreateOpen(false);
     });
   };
-  const addPrivateNote = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!selected || !note.trim()) return;
-    await run(async () => {
-      await act({ type: "add-note", taskId: selected.id, text: note });
-      setNote("");
-    });
-  };
 
   if (loading)
     return (
       <div className="workspace-page">
         <div className="workflow-skeleton" />
+      </div>
+    );
+  if (!departmentInfo)
+    return (
+      <div className="workspace-page">
+        <section className="workflow-empty">
+          <Circle />
+          <h2>Department not found</h2>
+          <p>This department is no longer in the workspace catalog.</p>
+          <a className="button button-secondary" href="/departments">
+            View departments
+          </a>
+        </section>
       </div>
     );
   if (!user?.approved)
@@ -188,7 +236,7 @@ export default function DepartmentPage({
         </section>
       </div>
     );
-  if (!isCell0 && department === "cell-0")
+  if (!isCell0Leader && department === "cell-0")
     return (
       <div className="workspace-page">
         <section className="workflow-empty">
@@ -205,7 +253,7 @@ export default function DepartmentPage({
         <div className="page-heading">
           <h1>{departmentInfo.name}</h1>
         </div>
-        {isCell0 && (
+        {isCell0Leader && (
           <Button
             variant="primary"
             onClick={() => {
@@ -218,7 +266,7 @@ export default function DepartmentPage({
         )}
       </div>
       <div className="workflow-toolbar">
-        <div className="workflow-search">
+        <div className="workflow-search w-[min(60vw,320px)] !basis-auto !flex-none !min-w-0">
           <Search size={17} />
           <input
             aria-label="Search tasks"
@@ -227,47 +275,49 @@ export default function DepartmentPage({
             onChange={(event) => setSearch(event.target.value)}
           />
         </div>
-        <div className="workflow-filters">
-          <SlidersHorizontal size={16} />
-          <select
-            aria-label="Filter by group"
-            value={teamFilter}
-            onChange={(event) => setTeamFilter(event.target.value)}
-          >
-            <option value="all">All groups</option>
-            {departmentInfo.groups.map((group) => (
-              <option key={group}>{group}</option>
-            ))}
-          </select>
-          <select
-            aria-label="Filter by status"
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
-          >
-            <option value="all">All statuses</option>
-            {columns.map((column) => (
-              <option key={column.id} value={column.id}>
-                {column.label}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="Filter by priority"
-            value={priorityFilter}
-            onChange={(event) => setPriorityFilter(event.target.value)}
-          >
-            <option value="all">All priorities</option>
-            {(["urgent", "high", "medium", "low"] as Priority[]).map(
-              (priority) => (
-                <option key={priority} value={priority}>
-                  {priority[0].toUpperCase() + priority.slice(1)} priority
+        <FilterDrawer
+          activeCount={Number(teamFilter !== "all") + Number(statusFilter !== "all")}
+          onReset={() => {
+            setTeamFilter("all");
+            setStatusFilter("all");
+            window.requestAnimationFrame(() => {
+              document
+                .querySelector<HTMLButtonElement>(
+                  '[role="dialog"] button[aria-label="Close dialog"]',
+                )
+                ?.focus();
+            });
+          }}
+        >
+          <Field label="Group">
+            <select
+              aria-label="Filter by group"
+              value={teamFilter}
+              onChange={(event) => setTeamFilter(event.target.value)}
+            >
+              <option value="all">All groups</option>
+              {departmentGroups.map((group) => (
+                <option key={group}>{group}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Status">
+            <select
+              aria-label="Filter by status"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+            >
+              <option value="all">All statuses</option>
+              {columns.map((column) => (
+                <option key={column.id} value={column.id}>
+                  {column.label}
                 </option>
-              ),
-            )}
-          </select>
-        </div>
+              ))}
+            </select>
+          </Field>
+        </FilterDrawer>
       </div>
-      {(error || feedback) && (
+      {(error || feedback) && !selectedId && !createOpen && (
         <div className="workflow-alert" role="alert">
           <span>{feedback || error}</span>
           <button onClick={() => setFeedback("")} aria-label="Dismiss">
@@ -281,13 +331,41 @@ export default function DepartmentPage({
       >
         {columns.map((column) => {
           const items = filtered.filter((task) => task.status === column.id);
+          const movingTask = draggingTaskId
+            ? tasks.find((task) => task.id === draggingTaskId)
+            : undefined;
+          const showDropPlaceholder = Boolean(
+            canEdit &&
+              movingTask &&
+              movingTask.status !== column.id &&
+              dropTargetStatus === column.id,
+          );
+          const previewItems = movingTask
+            ? tasks.filter(
+                (task) =>
+                  matchesDropFilters(task) &&
+                  (task.id === movingTask.id || task.status === column.id),
+              )
+            : [];
+          const insertionIndex =
+            statusFilter === "all"
+              ? previewItems.findIndex((task) => task.id === draggingTaskId)
+              : 0;
+          const dropDescription =
+            statusFilter !== "all" && statusFilter !== column.id
+              ? `Move to ${column.label}; it will leave this status filter.`
+              : `Move to ${column.label} at ${
+                  movingTask ? progressForDrop(movingTask, column.id) : 0
+                }% progress.`;
           return (
             <section
-              className="kanban-column"
+              className={
+                "kanban-column" +
+                (showDropPlaceholder ? " kanban-column-drop-target" : "")
+              }
               key={column.id}
-              onDragOver={(event) => {
-                if (canEdit) event.preventDefault();
-              }}
+              onDragOver={(event) => handleDragOver(event, column.id)}
+              onDragLeave={(event) => handleDragLeave(event, column.id)}
               onDrop={(event) => handleDrop(event, column.id)}
             >
               <div className="kanban-column-heading">
@@ -307,92 +385,100 @@ export default function DepartmentPage({
                 )}
               </div>
               <div className="kanban-card-list">
-                {items.map((task) => (
-                  <article
-                    key={task.id}
-                    className={
-                      "task-card " + (canEdit ? "task-card-draggable" : "")
-                    }
-                    draggable={canEdit}
-                    onDragStart={(event) => {
-                      event.dataTransfer.setData("text/task", task.id);
-                      event.dataTransfer.effectAllowed = "move";
-                    }}
-                  >
-                    {canEdit && (
-                      <span className="task-grip" aria-hidden="true">
-                        <GripVertical size={15} />
-                      </span>
-                    )}
-                    <button
-                      className="task-card-open"
-                      onClick={() => {
-                        setSelectedId(task.id);
-                        setNote("");
-                        setFeedback("");
-                        void refresh();
-                      }}
-                      aria-label={"Open " + task.title}
-                    >
-                      <div className="task-card-top">
-                        <Badge tone={priorityTone[task.priority]}>
-                          {task.priority}
-                        </Badge>
-                        <span className="task-reference">
-                          {task.requestId
-                            ? (state?.requests.find(
-                                (request) => request.id === task.requestId,
-                              )?.reference ?? "Request")
-                            : "Internal"}
-                        </span>
-                      </div>
-                      <h3>{task.title}</h3>
-                      {taskService(task).toLowerCase() !==
-                        task.subTeam.toLowerCase() && (
-                        <p className="task-card-service">{taskService(task)}</p>
-                      )}
-                      <div className="task-card-meta">
-                        {task.subTeam !== departmentInfo.name && (
-                          <>
-                            <span>{task.subTeam}</span>
-                            <span>·</span>
-                          </>
-                        )}
-                        <span>{task.ministry || "Cell 0"}</span>
-                      </div>
-                      <div className="task-progress-row">
-                        <div className="progress-track">
-                          <span style={{ width: task.progress + "%" }} />
-                        </div>
-                        <span>{task.progress}%</span>
-                      </div>
-                      <div className="task-card-footer">
-                        <span
-                          className={
-                            new Date(task.dueAt).getTime() < Date.now() &&
-                            task.status !== "completed"
-                              ? "overdue"
-                              : ""
-                          }
+                {items.map((task, index) => (
+                  <Fragment key={task.id}>
+                    {showDropPlaceholder &&
+                      statusFilter === "all" &&
+                      insertionIndex === index && (
+                        <div
+                          className="kanban-drop-placeholder"
+                          aria-hidden="true"
                         >
-                          <CalendarDays size={14} />
-                          {dateLabel(task.dueAt)}
+                          {dropDescription}
+                        </div>
+                      )}
+                    <article
+                      className={
+                        "task-card " + (canEdit ? "task-card-draggable" : "")
+                      }
+                      draggable={canEdit}
+                      onDragStart={(event) => {
+                        event.dataTransfer.setData("text/task", task.id);
+                        event.dataTransfer.effectAllowed = "move";
+                        setDraggingTaskId(task.id);
+                      }}
+                      onDragEnd={resetDrag}
+                    >
+                      {canEdit && (
+                        <span className="task-grip" aria-hidden="true">
+                          <GripVertical size={15} />
                         </span>
-                        <span>
-                          <ArrowUpRight size={14} /> Details
-                        </span>
-                      </div>
-                    </button>
-                  </article>
+                      )}
+                      <button
+                        className="task-card-open"
+                        onClick={() => {
+                          setSelectedId(task.id);
+                          setFeedback("");
+                          void refresh();
+                        }}
+                        aria-label={"Open " + task.title}
+                      >
+                        <h3>{task.title}</h3>
+                        {task.requestId && (
+                          <span className="task-reference">
+                            {state?.requests.find(
+                              (request) => request.id === task.requestId,
+                            )?.reference ?? "Request"}
+                          </span>
+                        )}
+                        <div className="task-card-meta">
+                          {task.subTeam !== departmentInfo.name && (
+                            <>
+                              <span>{task.subTeam}</span>
+                              <span>·</span>
+                            </>
+                          )}
+                          <span>{task.ministry || "Cell 0"}</span>
+                        </div>
+                        <div className="task-progress-row">
+                          <div
+                            className="progress-track"
+                            data-complete={task.status === "completed"}
+                          >
+                            <span style={{ width: task.progress + "%" }} />
+                          </div>
+                          <span>{task.progress}%</span>
+                        </div>
+                        <div className="task-card-footer">
+                          <span
+                            className={
+                              new Date(task.dueAt).getTime() < Date.now() &&
+                              task.status !== "completed"
+                                ? "overdue"
+                                : ""
+                            }
+                          >
+                            <CalendarDays size={14} />
+                            {dateLabel(task.dueAt)}
+                          </span>
+                        </div>
+                      </button>
+                    </article>
+                  </Fragment>
                 ))}
-                {items.length === 0 && (
+                {showDropPlaceholder &&
+                  (statusFilter !== "all" || insertionIndex >= items.length) && (
+                    <div className="kanban-drop-placeholder" aria-hidden="true">
+                      {dropDescription}
+                    </div>
+                  )}
+                {items.length === 0 && !showDropPlaceholder && (
                   <div className="kanban-empty">
                     <Circle size={16} />
                     <span>
                       {search ||
                       teamFilter !== "all" ||
-                      statusFilter !== "all" ||
-                      priorityFilter !== "all"
+                      statusFilter !== "all"
                         ? "No tasks match these filters."
                         : "Nothing here yet."}
                     </span>
@@ -408,181 +494,85 @@ export default function DepartmentPage({
         open={Boolean(selectedId)}
         onClose={() => setSelectedId(null)}
         title="Task details"
+        className="task-detail-modal"
       >
         {selected && (
           <div className="workflow-detail">
-            <div className="detail-title-row">
-              <div>
-                <div className="eyebrow">
-                  {selected.requestId
-                    ? (state?.requests.find(
-                        (request) => request.id === selected.requestId,
-                      )?.reference ?? "Ministry request")
-                    : "Internal task"}
-                </div>
-                <h2>{selected.title}</h2>
-              </div>
-              <Badge tone={priorityTone[selected.priority]}>
-                {selected.priority} priority
-              </Badge>
-            </div>
-            <div className="detail-grid">
-              <div>
-                <span>Ministry</span>
-                <strong>{selected.ministry || "Cell 0"}</strong>
-              </div>
-              <div>
-                <span>Service</span>
-                <strong>{taskService(selected)}</strong>
-              </div>
-              <div>
-                <span>Group</span>
-                <strong>{selected.subTeam}</strong>
-              </div>
-              <div>
-                <span>Due date</span>
-                <strong>
-                  {new Intl.DateTimeFormat("en-ZA", {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                  }).format(new Date(selected.dueAt))}
-                </strong>
-              </div>
-            </div>
-            <div className="detail-copy">
-              <span>Instructions</span>
-              <p>{selected.instructions}</p>
-            </div>
-            <div className="detail-copy">
-              <span>Notes</span>
-              <p>{selected.notes}</p>
-            </div>
-            {canEdit && (
-              <div className="detail-edit">
-                <div className="detail-section-heading">
-                  <div>
-                    <h3>Progress</h3>
-                    <p>Choose the current completion level.</p>
+            <TaskDetails key={selected.id} task={selected}>
+              {canEdit && (
+                <div className="detail-edit">
+                  <div className="detail-section-heading">
+                    <div>
+                      <h3>Progress</h3>
+                      <p>Choose the current completion level.</p>
+                    </div>
+                    <strong>{selected.progress}%</strong>
                   </div>
-                  <strong>{selected.progress}%</strong>
-                </div>
-                <div className="progress-buttons" aria-label="Update progress">
-                  {progressSteps.map((step) => (
-                    <button
-                      key={step}
-                      className={
-                        selected.progress === step
-                          ? "progress-choice active"
-                          : "progress-choice"
-                      }
-                      disabled={busy}
+                  <div
+                    className="progress-buttons"
+                    aria-label="Update progress"
+                  >
+                    {progressSteps.map((step) => (
+                      <button
+                        key={step}
+                        className={
+                          selected.progress === step
+                            ? "progress-choice active"
+                            : "progress-choice"
+                        }
+                        disabled={busy}
+                        onClick={() =>
+                          void updateTask(selected, { progress: step })
+                        }
+                      >
+                        {selected.progress === step && <Check size={14} />}
+                        {step}%
+                      </button>
+                    ))}
+                  </div>
+                  <div className="detail-actions">
+                    <Button
+                      disabled={busy || selected.status === "pending"}
                       onClick={() =>
-                        void updateTask(selected, { progress: step })
-                      }
-                    >
-                      {selected.progress === step && <Check size={14} />}
-                      {step}%
-                    </button>
-                  ))}
-                </div>
-                {canEdit && (
-                  <Field label="Priority">
-                    <select
-                      value={selected.priority}
-                      disabled={busy}
-                      onChange={(event) =>
                         void updateTask(selected, {
-                          priority: event.target.value as Priority,
+                          status: "pending",
+                          progress: 0,
                         })
                       }
                     >
-                      {(["low", "medium", "high", "urgent"] as Priority[]).map(
-                        (item) => (
-                          <option key={item} value={item}>
-                            {item[0].toUpperCase() + item.slice(1)}
-                          </option>
-                        ),
-                      )}
-                    </select>
-                  </Field>
-                )}
-                <div className="detail-actions">
-                  <Button
-                    disabled={busy || selected.status === "pending"}
-                    onClick={() =>
-                      void updateTask(selected, {
-                        status: "pending",
-                        progress: 0,
-                      })
-                    }
-                  >
-                    Move to pending
-                  </Button>
-                  <Button
-                    disabled={busy || selected.status === "in-progress"}
-                    onClick={() =>
-                      void updateTask(selected, { status: "in-progress" })
-                    }
-                  >
-                    <Clock3 size={15} /> In progress
-                  </Button>
-                  <Button
-                    variant="primary"
-                    disabled={busy || selected.status === "completed"}
-                    onClick={() =>
-                      void updateTask(selected, {
-                        status: "completed",
-                        progress: 100,
-                      })
-                    }
-                  >
-                    <Check size={15} /> Complete
-                  </Button>
-                </div>
-              </div>
-            )}
-            {canEdit && (
-              <section className="private-notes">
-                <div className="detail-section-heading">
-                  <div>
-                    <h3>Private team notes</h3>
-                    <p>Visible to Cell 0 and this department’s leaders only.</p>
+                      Move to pending
+                    </Button>
+                    <Button
+                      disabled={busy || selected.status === "in-progress"}
+                      onClick={() =>
+                        void updateTask(selected, { status: "in-progress" })
+                      }
+                    >
+                      <Clock3 size={15} /> In progress
+                    </Button>
+                    <Button
+                      variant="primary"
+                      disabled={busy || selected.status === "completed"}
+                      onClick={() =>
+                        void updateTask(selected, {
+                          status: "completed",
+                          progress: 100,
+                        })
+                      }
+                    >
+                      <Check size={15} /> Complete
+                    </Button>
                   </div>
-                  <LockKeyhole size={16} />
                 </div>
-                {selected.privateNotes.length > 0 ? (
-                  <div className="private-note-list">
-                    {selected.privateNotes.map((item) => (
-                      <div className="private-note" key={item.id}>
-                        <p>{item.text}</p>
-                        <span>
-                          {item.author} · {dateLabel(item.createdAt)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="muted-copy">No private notes yet.</p>
-                )}
-                <form className="inline-note-form" onSubmit={addPrivateNote}>
-                  <textarea
-                    value={note}
-                    onChange={(event) => setNote(event.target.value)}
-                    placeholder="Add a private note…"
-                    rows={2}
-                  />
-                  <Button
-                    type="submit"
-                    variant="secondary"
-                    disabled={busy || !note.trim()}
-                  >
-                    Add note
-                  </Button>
-                </form>
-              </section>
-            )}
+              )}
+            </TaskDetails>
             {(feedback || error) && (
-              <div className="workflow-alert" role="alert">
+              <div
+                ref={actionFeedbackRef}
+                className="workflow-alert"
+                role="alert"
+                tabIndex={-1}
+              >
                 {feedback || error}
               </div>
             )}
@@ -610,36 +600,18 @@ export default function DepartmentPage({
               placeholder="e.g. Prepare Sunday service graphics"
             />
           </Field>
-          <div className="form-row">
-            <Field label="Group">
-              <select
-                value={form.subTeam}
-                onChange={(event) =>
-                  setForm({ ...form, subTeam: event.target.value as SubTeam })
-                }
-              >
-                {departmentInfo.groups.map((group) => (
-                  <option key={group}>{group}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Priority">
-              <select
-                value={form.priority}
-                onChange={(event) =>
-                  setForm({ ...form, priority: event.target.value as Priority })
-                }
-              >
-                {(["low", "medium", "high", "urgent"] as Priority[]).map(
-                  (priority) => (
-                    <option key={priority} value={priority}>
-                      {priority[0].toUpperCase() + priority.slice(1)}
-                    </option>
-                  ),
-                )}
-              </select>
-            </Field>
-          </div>
+          <Field label="Group">
+            <select
+              value={form.subTeam}
+              onChange={(event) =>
+                setForm({ ...form, subTeam: event.target.value as SubTeam })
+              }
+            >
+              {departmentGroups.map((group) => (
+                <option key={group}>{group}</option>
+              ))}
+            </select>
+          </Field>
           <Field label="Due date and time">
             <input
               type="datetime-local"
@@ -674,7 +646,12 @@ export default function DepartmentPage({
             />
           </Field>
           {(feedback || error) && (
-            <div className="workflow-alert" role="alert">
+            <div
+              ref={actionFeedbackRef}
+              className="workflow-alert"
+              role="alert"
+              tabIndex={-1}
+            >
               {feedback || error}
             </div>
           )}

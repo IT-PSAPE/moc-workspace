@@ -9,22 +9,14 @@ import {
   X,
 } from "lucide-react";
 import { Badge, Button, Field, Modal } from "@moc/ui";
-import {
-  DEPARTMENTS,
-  SERVICES,
-  type MinistryRequest,
-  type Priority,
-} from "@moc/shared";
+import { type MinistryRequest } from "@moc/shared";
 import { useWorkspace } from "@moc/client";
+import RequestDetails from "../RequestDetails";
+import RequestCatalog from "../RequestCatalog";
+import { FilterDrawer } from "../components/UiDialogs";
 import "./workflows.css";
 
 const statuses = ["pending", "approved", "rejected"] as const;
-const priorityTone: Record<Priority, "neutral" | "gold" | "red" | "green"> = {
-  low: "neutral",
-  medium: "green",
-  high: "gold",
-  urgent: "red",
-};
 const fmtDate = (value: string) =>
   new Intl.DateTimeFormat("en-ZA", {
     day: "numeric",
@@ -35,21 +27,21 @@ const fmtDate = (value: string) =>
   }).format(new Date(value));
 
 export default function RequestsPage() {
-  const { state, user, loading, error, act, refresh } = useWorkspace();
-  const isCell0 = user?.approved && user.department === "cell-0";
+  const { state, user, loading, act, refresh } = useWorkspace();
+  const isCell0 =
+    user?.approved && user.isLeader && user.department === "cell-0";
   const [filter, setFilter] = useState("pending");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [reason, setReason] = useState("");
-  const [priority, setPriority] = useState<Priority>("medium");
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
   const requests = useMemo(
     () =>
       (state?.requests ?? []).filter(
         (request) =>
-          request.status === filter &&
+          (filter === "all" || request.status === filter) &&
           (request.reference + " " + request.ministry + " " + request.title)
             .toLowerCase()
             .includes(search.toLowerCase()),
@@ -65,9 +57,6 @@ export default function RequestsPage() {
   const count = (status: string) =>
     (state?.requests ?? []).filter((request) => request.status === status)
       .length;
-  const selectedService = selected
-    ? SERVICES.find((service) => service.id === selected.service)
-    : undefined;
   const shortNotice = (request: MinistryRequest) => {
     const hours = (new Date(request.dueAt).getTime() - Date.now()) / 3600000;
     return hours >= 0 && hours < 24;
@@ -94,8 +83,7 @@ export default function RequestsPage() {
     }
   };
   const approve = () =>
-    selected &&
-    void saveAction({ type: "approve", requestId: selected.id, priority });
+    selected && void saveAction({ type: "approve", requestId: selected.id });
   const reject = (event: React.FormEvent) => {
     event.preventDefault();
     if (selected)
@@ -104,7 +92,6 @@ export default function RequestsPage() {
   const showRequest = (request: MinistryRequest) => {
     setSelectedId(request.id);
     setFeedback("");
-    setPriority("medium");
     void refresh();
   };
 
@@ -117,6 +104,10 @@ export default function RequestsPage() {
   if (!isCell0)
     return (
       <div className="workspace-page">
+        <div className="page-heading">
+          <h1>Requests</h1>
+          <RequestCatalog />
+        </div>
         <section className="workflow-empty">
           <FileText />
           <h2>Requests are managed by Cell 0</h2>
@@ -131,23 +122,10 @@ export default function RequestsPage() {
         <div className="page-heading">
           <h1>Requests</h1>
         </div>
-      </div>
-      <div className="request-tabs" role="tablist" aria-label="Filter requests">
-        {statuses.map((status) => (
-          <button
-            role="tab"
-            aria-selected={filter === status}
-            className={filter === status ? "request-tab active" : "request-tab"}
-            key={status}
-            onClick={() => setFilter(status)}
-          >
-            {status[0].toUpperCase() + status.slice(1)}
-            <span>{count(status)}</span>
-          </button>
-        ))}
+        <RequestCatalog />
       </div>
       <div className="workflow-toolbar requests-toolbar">
-        <div className="workflow-search">
+        <div className="workflow-search !w-full !max-w-[320px] !flex-none">
           <Search size={17} />
           <input
             aria-label="Search requests"
@@ -156,6 +134,14 @@ export default function RequestsPage() {
             onChange={(event) => setSearch(event.target.value)}
           />
         </div>
+        <FilterDrawer activeCount={filter === "all" ? 0 : 1} onReset={() => setFilter("all")}>
+          <Field label="Status">
+            <select aria-label="Filter requests by status" value={filter} onChange={(event) => setFilter(event.target.value)}>
+              <option value="all">All statuses ({state.requests.length})</option>
+              {statuses.map((status) => <option key={status} value={status}>{status[0].toUpperCase() + status.slice(1)} ({count(status)})</option>)}
+            </select>
+          </Field>
+        </FilterDrawer>
         <span className="request-result-count">
           {requests.length} {requests.length === 1 ? "request" : "requests"}
         </span>
@@ -163,9 +149,9 @@ export default function RequestsPage() {
           <RefreshCw size={14} /> Refresh
         </Button>
       </div>
-      {(error || feedback) && (
+      {feedback && (
         <div className="workflow-alert" role="alert">
-          <span>{feedback || error}</span>
+          <span>{feedback}</span>
           <button aria-label="Dismiss" onClick={() => setFeedback("")}>
             <X size={15} />
           </button>
@@ -173,9 +159,15 @@ export default function RequestsPage() {
       )}
       <section className="request-list" aria-label={filter + " requests"}>
         {requests.map((request) => {
-          const service = SERVICES.find((item) => item.id === request.service);
-          const department = DEPARTMENTS.find(
-            (item) => item.id === service?.department,
+          const service = state.catalog.services.find(
+            (item) => item.id === request.service,
+          );
+          const assignedTask = state.tasks.find(
+            (item) => item.id === request.taskId,
+          );
+          const department = state.catalog.departments.find(
+            (item) =>
+              item.id === (assignedTask?.department ?? service?.department),
           );
           return (
             <button
@@ -210,7 +202,8 @@ export default function RequestsPage() {
                 </div>
                 {department && (
                   <Badge tone="neutral">
-                    {department.name} / {service?.subTeam}
+                    {department.name} /{" "}
+                    {assignedTask?.subTeam ?? service?.subTeam}
                   </Badge>
                 )}
                 <ArrowUpRight size={17} />
@@ -226,8 +219,8 @@ export default function RequestsPage() {
               {search
                 ? "Try a different search term."
                 : "There are no " +
-                  filter +
-                  " requests in the inbox right now."}
+                  (filter === "all" ? "" : filter + " ") +
+                  "requests in the inbox right now."}
             </p>
           </div>
         )}
@@ -237,114 +230,12 @@ export default function RequestsPage() {
         open={Boolean(selectedId) && !rejectOpen}
         onClose={() => setSelectedId(null)}
         title="Request details"
+        className="task-detail-modal"
       >
         {selected && (
-          <div className="workflow-detail">
-            <div className="detail-title-row">
-              <div>
-                <div className="eyebrow">
-                  {selected.reference} · submitted {fmtDate(selected.createdAt)}
-                </div>
-                <h2>{selected.title}</h2>
-              </div>
-              <Badge
-                tone={
-                  selected.status === "pending"
-                    ? "gold"
-                    : selected.status === "approved"
-                      ? "green"
-                      : "red"
-                }
-              >
-                {selected.status}
-              </Badge>
-            </div>
-            {shortNotice(selected) && (
-              <div className="short-notice-banner">
-                <AlertTriangle size={17} />
-                <div>
-                  <strong>Short notice request</strong>
-                  <p>
-                    This deadline is less than 24 hours away. You can still
-                    approve and route it.
-                  </p>
-                </div>
-              </div>
-            )}
-            <div className="detail-grid">
-              <div>
-                <span>Ministry</span>
-                <strong>{selected.ministry}</strong>
-              </div>
-              <div>
-                <span>Service</span>
-                <strong>{selectedService?.name ?? selected.service}</strong>
-              </div>
-              <div>
-                <span>Routing</span>
-                <strong>
-                  {
-                    DEPARTMENTS.find(
-                      (item) => item.id === selectedService?.department,
-                    )?.name
-                  }{" "}
-                  · {selectedService?.subTeam}
-                </strong>
-              </div>
-              <div>
-                <span>Requested delivery</span>
-                <strong>{fmtDate(selected.dueAt)}</strong>
-              </div>
-            </div>
-            <div className="detail-copy">
-              <span>Instructions</span>
-              <p>{selected.instructions}</p>
-            </div>
-            <div className="detail-copy">
-              <span>Additional notes</span>
-              <p>{selected.notes}</p>
-            </div>
-            {selected.airedDates?.length ? (
-              <div className="detail-copy">
-                <span>Original aired dates</span>
-                <div className="aired-date-list">
-                  {selected.airedDates.map((date) => (
-                    <Badge key={date}>
-                      {new Intl.DateTimeFormat("en-ZA", {
-                        day: "numeric",
-                        month: "long",
-                        year: "numeric",
-                        timeZone: "UTC",
-                      }).format(new Date(date + "T00:00:00Z"))}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-            {selected.rejectionReason && (
-              <div className="rejection-reason">
-                <span>Reason returned to ministry</span>
-                <p>{selected.rejectionReason}</p>
-              </div>
-            )}
+          <RequestDetails key={selected.id} request={selected}>
             {selected.status === "pending" && (
               <div className="request-review-actions">
-                <Field label="Set task priority">
-                  <select
-                    value={priority}
-                    onChange={(event) =>
-                      setPriority(event.target.value as Priority)
-                    }
-                  >
-                    {(["low", "medium", "high", "urgent"] as Priority[]).map(
-                      (item) => (
-                        <option value={item} key={item}>
-                          {item[0].toUpperCase() + item.slice(1)}
-                        </option>
-                      ),
-                    )}
-                  </select>
-                </Field>
                 <div className="detail-actions">
                   <Button
                     variant="danger"
@@ -368,7 +259,7 @@ export default function RequestsPage() {
                 {feedback}
               </div>
             )}
-          </div>
+          </RequestDetails>
         )}
       </Modal>
       <Modal

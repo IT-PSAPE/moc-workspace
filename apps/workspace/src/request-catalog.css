@@ -1,0 +1,114 @@
+.request-catalog .segmented-control {
+  align-self: flex-start;
+}
+
+.request-catalog-scroll-hint {
+  margin: -6px 0 0;
+}
+
+.request-catalog-table-wrap {
+  scrollbar-gutter: stable;
+}
+
+@media (width >= 768px) {
+  .modal-panel.request-catalog-drawer {
+    width: min(860px, calc(100vw - 64px));
+  }
+}
+
+@media (width < 768px) {
+  .modal-panel.request-catalog-drawer {
+    width: 100vw;
+  }
+}
+
+.request-catalog-table .inline-edit-cell__read {
+  min-height: 32px;
+  padding: 4px 5px;
+  color: var(--ink);
+}
+
+.request-catalog-table .inline-edit-cell__editor {
+  min-width: 190px;
+}
+
+.request-catalog-table .inline-edit-cell__input > input,
+.request-catalog-table .inline-edit-cell__input > select,
+.request-catalog-table .request-catalog-create-row .input {
+  width: 100%;
+  min-width: 120px;
+  min-height: 36px;
+}
+
+.request-catalog-checkbox {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-secondary);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.request-catalog-checkbox input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--brand-fill);
+}
+
+.request-catalog-actions {
+  white-space: nowrap;
+}
+
+.request-catalog-actions > div {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.request-catalog-empty {
+  padding: 18px !important;
+  color: var(--muted) !important;
+  text-align: center;
+}
+
+@media (width < 768px) {
+  .request-catalog-table-wrap {
+    margin: 0 -4px;
+    padding: 0 4px 4px;
+    scrollbar-width: thin;
+    box-shadow: inset -12px 0 10px -14px var(--ink);
+  }
+
+  .request-catalog-table th,
+  .request-catalog-table td {
+    padding: 6px;
+  }
+
+  .request-catalog-table .inline-edit-cell__read,
+  .request-catalog-checkbox {
+    min-height: 44px;
+  }
+
+  .request-catalog-table .inline-edit-cell__read {
+    padding: 4px;
+  }
+
+  .request-catalog-table .inline-edit-cell__editor {
+    min-width: 210px;
+  }
+
+  .request-catalog-table .inline-edit-cell__input > input,
+  .request-catalog-table .inline-edit-cell__input > select,
+  .request-catalog-table .request-catalog-create-row .input {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .request-catalog-checkbox input {
+    width: 20px;
+    height: 20px;
+  }
+}

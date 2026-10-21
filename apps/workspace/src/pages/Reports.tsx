@@ -1,5 +1,12 @@
 import { useMemo, useState } from "react";
-import { Download, FileBarChart2, LockKeyhole, TrendingUp } from "lucide-react";
+import {
+  AlertCircle,
+  Clock3,
+  Download,
+  FileBarChart2,
+  LockKeyhole,
+  TrendingUp,
+} from "lucide-react";
 import { Badge } from "@moc/ui";
 import { useWorkspace } from "@moc/client";
 import type { Task } from "@moc/shared";
@@ -16,7 +23,7 @@ const escapeCsv = (value: unknown) => {
 };
 
 export default function ReportsPage() {
-  const { state, user, loading, error } = useWorkspace();
+  const { state, user, loading } = useWorkspace();
   const [month, setMonth] = useState(
     () => new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   );
@@ -86,7 +93,6 @@ export default function ReportsPage() {
         "Department",
         "Group",
         "Status",
-        "Priority",
         "Progress",
         "Created at",
         "Due at",
@@ -95,10 +101,11 @@ export default function ReportsPage() {
       ...monthTasks.map((task: Task) => [
         task.title,
         task.ministry,
-        task.department,
+        state.catalog.departments.find(
+          (department) => department.id === task.department,
+        )?.name ?? task.department,
         task.subTeam,
         task.status,
-        task.priority,
         task.progress + "%",
         task.createdAt,
         task.dueAt,
@@ -122,7 +129,7 @@ export default function ReportsPage() {
         <div className="workflow-skeleton" />
       </div>
     );
-  if (!user?.approved || user.department !== "cell-0")
+  if (!user?.approved || !user.isLeader || user.department !== "cell-0")
     return (
       <div className="workspace-page">
         <section className="workflow-empty">
@@ -165,51 +172,49 @@ export default function ReportsPage() {
           </button>
         </div>
       </div>
-      {error && (
-        <div className="workflow-alert" role="alert">
-          {error}
-        </div>
-      )}
       <section className="report-metrics" aria-label="Monthly report metrics">
         <article className="report-metric">
-          <div className="report-metric-icon gold">
-            <FileBarChart2 size={18} />
+          <div className="report-metric-label">
+            <FileBarChart2 size={16} />
+            <span>Requests received</span>
           </div>
-          <span>Requests received</span>
           <strong>{report.requested.length}</strong>
-          <small>Submitted in {monthLabel}</small>
         </article>
         <article className="report-metric">
-          <div className="report-metric-icon green">
-            <TrendingUp size={18} />
+          <div className="report-metric-label">
+            <TrendingUp size={16} />
+            <span>Tasks completed</span>
           </div>
-          <span>Tasks completed</span>
           <strong>{report.completed.length}</strong>
-          <small>Completed in {monthLabel}</small>
         </article>
-        <article className="report-metric">
-          <div className="report-metric-icon rose">
-            <span>!</span>
+        <article
+          className="report-metric"
+          title="Open tasks with overdue deadlines in the selected month"
+        >
+          <div className="report-metric-label">
+            <AlertCircle size={16} />
+            <span>Overdue open tasks</span>
           </div>
-          <span>Overdue open tasks</span>
           <strong>{report.overdue.length}</strong>
-          <small>Due this month and still open</small>
         </article>
-        <article className="report-metric">
-          <div className="report-metric-icon sage">
-            <span>◷</span>
+        <article
+          className="report-metric"
+          title="Average time from task creation to completion"
+        >
+          <div className="report-metric-label">
+            <Clock3 size={16} />
+            <span>Avg. completion</span>
           </div>
-          <span>Average completion time</span>
           <strong>
-            {report.average === null
-              ? "—"
-              : (report.average / 86400000).toFixed(1) + "d"}
+            {report.average === null ? (
+              "—"
+            ) : (
+              <>
+                {(report.average / 86400000).toFixed(1)}
+                <span className="report-metric-unit">days</span>
+              </>
+            )}
           </strong>
-          <small>
-            {report.completed.length
-              ? "From creation to completion"
-              : "No completed tasks this month"}
-          </small>
         </article>
       </section>
       <section className="report-detail-card">
@@ -220,15 +225,14 @@ export default function ReportsPage() {
           <Badge>{monthTasks.length} tasks</Badge>
         </div>
         <div className="report-table-wrap">
-          <table className="report-table">
+          <table className="report-table responsive-data-table">
             <thead>
               <tr>
-                <th>Task</th>
-                <th>Team</th>
-                <th>Status</th>
-                <th>Priority</th>
-                <th>Progress</th>
-                <th>Due date</th>
+                <th scope="col">Task</th>
+                <th scope="col">Team</th>
+                <th scope="col">Status</th>
+                <th scope="col">Progress</th>
+                <th scope="col">Due date</th>
               </tr>
             </thead>
             <tbody>
@@ -237,12 +241,12 @@ export default function ReportsPage() {
                 .sort((a, b) => Date.parse(a.dueAt) - Date.parse(b.dueAt))
                 .map((task) => (
                   <tr key={task.id}>
-                    <td>
+                    <td data-label="Task">
                       <strong>{task.title}</strong>
                       <small>{task.ministry || "Cell 0"}</small>
                     </td>
-                    <td>{task.subTeam}</td>
-                    <td>
+                    <td data-label="Team">{task.subTeam}</td>
+                    <td data-label="Status">
                       <Badge
                         tone={
                           task.status === "completed"
@@ -255,16 +259,18 @@ export default function ReportsPage() {
                         {task.status.replace("-", " ")}
                       </Badge>
                     </td>
-                    <td>{task.priority}</td>
-                    <td>
+                    <td data-label="Progress">
                       <div className="table-progress">
-                        <span className="progress-track">
+                        <div
+                          className="progress-track"
+                          data-complete={task.status === "completed"}
+                        >
                           <span style={{ width: task.progress + "%" }} />
-                        </span>
+                        </div>
                         <small>{task.progress}%</small>
                       </div>
                     </td>
-                    <td>
+                    <td data-label="Due date">
                       {new Intl.DateTimeFormat("en-ZA", {
                         day: "numeric",
                         month: "short",

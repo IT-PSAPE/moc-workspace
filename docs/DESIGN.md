@@ -43,11 +43,24 @@ and equipment bookings) are outside this UI migration. Dashboard composition
 uses the source's compact collection styling while retaining real task data;
 the source Overview page itself is an empty scaffold.
 
+Overview opens with a time-based greeting using the signed-in member's first
+name, a welcome line and the supplied quote banner. The banner uses the existing
+brand tint, borders, type and radius tokens, with a subdued column illustration.
+
+The Requests inbox places its simple status segmented control on the left of
+the toolbar and a compact search on the right. It has no separate Refresh
+button or result-count label. Multi-field filters on other list surfaces remain
+in the shared right-side FilterDrawer.
+
 Desktop navigation has an icon rail and an account menu. Page searches have a
 320px maximum width. Department pages add a collapsible 256px secondary navigation panel.
 Below 768px the navigation moves into a focus-trapped left drawer. Both apps
 use 36px default desktop controls and 44px phone controls. Dialogs have a fixed
 header and scrollable body; phone dialogs open as bottom sheets.
+
+Side drawers use the shared Modal side variant. Keep an 8px gap around the
+panel so it floats inside the viewport, and use the existing radius token for
+its rounded corners. Apply this geometry consistently to all side drawers.
 
 The public portal starts with two home choices. Request creation has two steps:
 the complete vertical form, then review/confirmation. The form includes the
@@ -86,13 +99,14 @@ equipment and venue models are not added. Phones use
 day cells with count dots and an accessible day preview. Agenda, day and week
 views use the same live task data and preserve department access restrictions.
 
-Request details open in a full-height right-side drawer with grouped properties,
-the brief and comments in one scroll. Task details use a structured dialog and
-a bottom sheet on phones. Existing private team notes appear as comments, with
-author, timestamp, a composer and save/error feedback. Cell 0 may comment before
-approval; those comments carry into the assigned task. Private comments never
-appear in public tracking. Report metrics use neutral bordered cards with
-aligned labels, values and supporting text.
+Request details open in the right-side drawer with grouped properties, the
+brief and comments in one scroll. Do not add tabs: comments always follow the
+request content in the same scroll. Task details use a structured dialog and a
+bottom sheet on phones. Existing private team notes appear as comments, with
+author, timestamp, a composer and save/error feedback. Cell 0 may comment
+before approval; those comments carry into the assigned task. Private comments
+never appear in public tracking. Report metrics use neutral bordered cards
+with aligned labels, values and supporting text.
 
 The dashboard Ministry pulse uses an interactive Chart.js canvas line chart
 with count ticks, an automatic scale, real month/year labels, hover/touch

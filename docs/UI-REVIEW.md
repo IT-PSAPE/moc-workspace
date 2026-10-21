@@ -62,7 +62,7 @@ current review matrix and browser checks.
 | R1-02 | Settings phone access actions hidden | Fixed; stacked phone rows retain actions |
 | R1-03 | Departments phone metadata/actions hidden | Fixed; stacked phone rows retain content |
 | R1-04 | Request inbox phone due dates hidden | Fixed; due dates remain visible |
-| R1-05 | Status controls used unsupported tab semantics | The Round-1 button fix applied to that candidate only; Round 3 superseded it with the shared FilterDrawer and select controls. |
+| R1-05 | Status controls used unsupported tab semantics | Round 3 used FilterDrawer and select controls. The subsequent Requests toolbar revision uses the shared SegmentedControl with pressed-button semantics; other multi-field filters remain in FilterDrawer. |
 | R1-06 | Mobile portal link absent; suspected focus escape | Link added; focus finding withdrawn after settled Tab-cycle evidence |
 | R1-07 | Calendar/Work naming mismatch | Fixed; navigation and page use Work |
 | R1-08 | Day/week current-time guide missing | Fixed; current period guide and overlap fixtures passed |
@@ -97,7 +97,7 @@ observed failure or a changed shared component creates a concrete risk.
 | Data density | Populated and true-empty examples for data surfaces; one long-title or dense fixture for each distinct list/table layout. Do not repeat the same fixture at every route and viewport unless it changes behavior. |
 | Roles and privacy | Cell 0 leader, department leader, approved nonleader and unapproved session at relevant access gates. Verify private inbox/member data and public tracking boundaries where those projections are involved; do not multiply every role across unrelated public or read-only screens. |
 | Management flows | Services/Ministries, departments/groups and members: cover each distinct mutation contract with a representative valid save, confirmation where required, invalid or in-use denial, recoverable API failure, and persisted result. Check desktop plus narrow phone for each distinct table/drawer/form pattern; verify authorization at the API boundary. |
-| Shared controls and overlays | FilterDrawer open/select/reset and focus behavior, segmented navigation, inline edit save/cancel/error, and confirmation/dialog/drawer keyboard/touch behavior. Exercise a shared primitive directly and at least one real route integration; retest all consumers after a shared primitive change. |
+| Shared controls and overlays | Requests status SegmentedControl with compact search; FilterDrawer open/select/reset and focus behavior for other multi-field filters; segmented navigation; inline edit save/cancel/error; and confirmation/dialog/drawer keyboard/touch behavior. Exercise a shared primitive directly and at least one real route integration; retest all consumers after a shared primitive change. |
 | Public request and tracking | Full form → review → back with draft preserved → receipt; representative field validation and service-dependent fields; pending edit, approved/in-progress, completed and rejected tracking outcomes, with credential privacy checked at the public boundary. |
 | Existing workflow changes | Request drawer/comment/approve/reject, board placement feedback, calendar day/week/month/agenda and department-colored events, dashboard chart keyboard/touch, and CSV export. Cover the changed behavior and its failure/empty or long-content branch where applicable. |
 
@@ -182,12 +182,21 @@ candidate or satisfy the R3 matrix.
 
 The current changes supersede Round-2 visual acceptance for affected surfaces.
 The user explicitly rejected expanding group-input arrays in department rows,
-Unicode save/cancel glyphs, new pill/card patterns, inline filter strips and
-full-width searches. Departments stay in a table; a Groups cell opens a focused
-group table in a right drawer with separate create/rename forms. Members keep
-direct cell editing. Every persisted entity deletion requires a confirmation
-dialog. Department actions move to the sidebar context/ellipsis menu. Local
-filter options share the same drawer; searches are capped at 320px.
+Unicode save/cancel glyphs, new pill/card patterns, generic inline filter
+strips and full-width searches. The Requests status filter is the single-filter
+exception: it uses a shared SegmentedControl at the left of the toolbar, with
+compact search at the right and no separate Refresh or result count. Other
+multi-field filters remain in the shared drawer. Departments stay in a table;
+a Groups cell opens a focused group table in a right drawer with separate
+create/rename forms. Members keep direct cell editing. Every persisted entity
+deletion requires a confirmation dialog. Department actions move to the sidebar
+context/ellipsis menu. Local searches are capped at 320px.
+
+Current overlay guidance: every side drawer floats inside the viewport with an
+8px gap around its panel and rounded corners using the existing radius token.
+Request details have no tabs; request properties, brief, actions and comments
+remain in the same content scroll, with comments always following the request
+content.
 
 Repeated department group descriptions are removed, not the groups themselves
 (user clarification). Per-task progress bars are removed only from the

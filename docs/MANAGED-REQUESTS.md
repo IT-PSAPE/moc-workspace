@@ -105,6 +105,12 @@ to specific compositions. Shared segmented controls use an 8px outer radius
 and 6px selected item radius, with no extra borders. Icons use Lucide SVGs,
 including save/cancel actions; do not substitute Unicode tick/cross characters.
 
+All side drawers use the shared Modal side variant and float with an 8px gap
+around the panel, using the existing radius token for rounded corners. Request
+details have no tabs: grouped request properties, the brief, actions and
+comments stay in one content scroll, with comments always beneath the request
+content.
+
 Members remain a table with Name, Duty, Department and Groups editable directly
 in their cells. Department management remains a table, with group counts opening
 the focused group manager; it does not expose an expanding group-input array.
@@ -112,9 +118,11 @@ Repeated group description subtitles are removed from department summaries,
 while groups, member assignments and service routing remain persisted. The
 Departments task overview omits the redundant per-task progress bars.
 
-All list filter options use the shared right-side FilterDrawer, including task
-status, board group/status, request status, and schedule department/status. Do
-not use inline status-filter strips or status-filter tabs. Segmented controls
-for Settings sections and the Services/Ministries catalog choice are separate
-navigation controls, not list filters. Local searches have a 320px maximum
-width. Date/view navigation remains inline.
+The Requests inbox uses the shared SegmentedControl for its simple status
+filter, aligned on the left of the toolbar, with compact search on the right.
+Do not add a separate Refresh button or result-count label. Keep multi-field
+filters on other list surfaces in the shared right-side FilterDrawer, including
+board group/status and schedule department/status; preserve other existing
+drawer-based filters. Segmented controls for Settings sections and the
+Services/Ministries catalog choice are navigation controls, not list filters.
+Local searches have a 320px maximum width. Date/view navigation remains inline.

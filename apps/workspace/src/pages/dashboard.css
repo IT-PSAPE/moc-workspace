@@ -54,34 +54,6 @@
   color: var(--dashboard-department-accent);
 }
 
-.dashboard-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  min-height: 40px;
-}
-
-.dashboard-heading h1 {
-  margin: 0;
-  font-size: 20px;
-  line-height: 28px;
-  font-weight: 600;
-  letter-spacing: -0.2px;
-}
-
-.dashboard-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: none;
-}
-
-.dashboard-actions .button {
-  min-height: 36px;
-  font-size: 14px;
-}
-
 .dashboard-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -663,21 +635,6 @@
 
   .dashboard-stat:nth-child(4) {
     border-top: 1px solid var(--line);
-  }
-
-  .dashboard-header {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .dashboard-actions {
-    width: 100%;
-    flex-wrap: wrap;
-  }
-
-  .dashboard-actions .button {
-    flex: 1;
   }
 
   .dashboard-stat {

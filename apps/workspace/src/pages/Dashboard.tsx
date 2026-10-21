@@ -11,6 +11,7 @@ import {
   ListChecks,
   Music2,
   Palette,
+  Quote,
 } from "lucide-react";
 import { useWorkspace } from "@moc/client";
 import { Badge, Button } from "@moc/ui";
@@ -62,6 +63,13 @@ export default function Dashboard() {
   const requests = state?.requests ?? [];
   const activities = state?.activities ?? [];
   const now = new Date();
+  const firstName = user?.name.trim().split(/\s+/)[0];
+  const greeting =
+    now.getHours() < 12
+      ? "Good morning"
+      : now.getHours() < 18
+        ? "Good afternoon"
+        : "Good evening";
   const weekStart = new Date(now);
   weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7));
   weekStart.setHours(0, 0, 0, 0);
@@ -117,11 +125,16 @@ export default function Dashboard() {
   );
   return (
     <div className="dashboard-page">
-      <header className="dashboard-header">
-        <div className="dashboard-heading">
-          <h1>Overview</h1>
+      <header className="flex min-w-0 items-center justify-between gap-4 max-[767px]:flex-col max-[767px]:items-start">
+        <div className="min-w-0">
+          <h1 className="m-0 text-2xl leading-tight font-semibold tracking-[-0.02em] [overflow-wrap:anywhere] max-[767px]:text-xl">
+            {greeting}{firstName ? `, ${firstName}` : ""}
+          </h1>
+          <p className="mt-1 mb-0 text-sm leading-5 text-[var(--muted)]">
+            Welcome back to MOC Workspace
+          </p>
         </div>
-        <div className="dashboard-actions">
+        <div className="flex shrink-0 items-center gap-2 max-[767px]:w-full max-[767px]:flex-wrap max-[767px]:[&>.button]:flex-1">
           <Button
             variant="secondary"
             onClick={() => {
@@ -142,6 +155,46 @@ export default function Dashboard() {
           )}
         </div>
       </header>
+
+      <aside aria-label="Workspace inspiration" className="relative flex min-h-24 overflow-hidden rounded-[var(--radius-lg)] border border-solid border-[var(--line)] bg-[var(--surface)]">
+        <div className="z-[1] flex w-16 shrink-0 items-center justify-center bg-[var(--brand-50)] text-[var(--brand-700)] max-[767px]:w-12">
+          <Quote size={26} strokeWidth={1.5} aria-hidden="true" />
+        </div>
+        <figure className="relative z-[1] m-0 min-w-0 flex-1 px-5 py-5 sm:pr-44 max-[767px]:px-4 max-[767px]:py-4">
+          <blockquote className="m-0 text-lg leading-7 font-medium italic max-[767px]:text-base max-[767px]:leading-6">
+            “Fulfil your duty with faith and excellence.”
+          </blockquote>
+          <figcaption className="mt-1 text-xs leading-4 text-[var(--muted)]">
+            — Chairman Man-Hee Lee
+          </figcaption>
+        </figure>
+        <svg
+          className="pointer-events-none absolute inset-y-0 right-0 hidden h-full w-56 text-[var(--ink-secondary)] opacity-[0.12] sm:block"
+          viewBox="0 0 224 112"
+          fill="none"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <defs>
+            <linearGradient id="overview-column-fade">
+              <stop stopColor="white" stopOpacity="0" />
+              <stop offset="0.55" stopColor="white" />
+            </linearGradient>
+            <mask id="overview-column-mask">
+              <rect width="224" height="112" fill="url(#overview-column-fade)" />
+            </mask>
+          </defs>
+          <g mask="url(#overview-column-mask)" stroke="currentColor" strokeWidth="1.5">
+            <path d="M-12 36 224-18M-12 43 224-11M-12 50 224-4" />
+            {[18, 84, 150, 216].map((x) => (
+              <g key={x} transform={`translate(${x} ${-x * 0.23 + 44})`}>
+                <path d="M-6-7H40V0H-6ZM-2 0H36L32 7H2ZM2 7H32L30 112H4ZM-2 112H36V118H-2" fill="currentColor" fillOpacity="0.12" />
+                <path d="M8 10 9 109M16 10V109M25 10 24 109" />
+              </g>
+            ))}
+          </g>
+        </svg>
+      </aside>
 
       <section className="dashboard-stats" aria-label="Workspace statistics">
         <article className="dashboard-stat">

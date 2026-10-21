@@ -4,19 +4,17 @@ import {
   ArrowUpRight,
   Check,
   FileText,
-  RefreshCw,
   Search,
   X,
 } from "lucide-react";
-import { Badge, Button, Field, Modal } from "@moc/ui";
+import { Badge, Button, Field, Modal, SegmentedControl } from "@moc/ui";
 import { type MinistryRequest } from "@moc/shared";
 import { useWorkspace } from "@moc/client";
 import RequestDetails from "../RequestDetails";
 import RequestCatalog from "../RequestCatalog";
-import { FilterDrawer } from "../components/UiDialogs";
 import "./workflows.css";
 
-const statuses = ["pending", "approved", "rejected"] as const;
+const statuses = ["all", "pending", "approved", "rejected"] as const;
 const fmtDate = (value: string) =>
   new Intl.DateTimeFormat("en-ZA", {
     day: "numeric",
@@ -54,9 +52,15 @@ export default function RequestsPage() {
       null,
     [state, selectedId],
   );
-  const count = (status: string) =>
-    (state?.requests ?? []).filter((request) => request.status === status)
-      .length;
+  const count = (status: (typeof statuses)[number]) =>
+    status === "all"
+      ? (state?.requests ?? []).length
+      : (state?.requests ?? []).filter((request) => request.status === status)
+          .length;
+  const statusOptions = statuses.map((status) => ({
+    value: status,
+    label: `${status[0].toUpperCase()}${status.slice(1)} · ${count(status)}`,
+  }));
   const shortNotice = (request: MinistryRequest) => {
     const hours = (new Date(request.dueAt).getTime() - Date.now()) / 3600000;
     return hours >= 0 && hours < 24;
@@ -124,8 +128,16 @@ export default function RequestsPage() {
         </div>
         <RequestCatalog />
       </div>
-      <div className="workflow-toolbar requests-toolbar">
-        <div className="workflow-search !w-full !max-w-[320px] !flex-none">
+      <div className="workflow-toolbar requests-toolbar !flex-row !flex-wrap">
+        <div className="max-w-full overflow-x-auto [&_button]:whitespace-nowrap max-[400px]:[&_button]:px-1.5 max-[400px]:[&_button]:text-xs">
+          <SegmentedControl
+            label="Filter requests by status"
+            value={filter}
+            onValueChange={setFilter}
+            options={statusOptions}
+          />
+        </div>
+        <div className="workflow-search !ml-auto !w-full !min-w-0 !max-w-[320px] !flex-none">
           <Search size={17} />
           <input
             aria-label="Search requests"
@@ -134,20 +146,6 @@ export default function RequestsPage() {
             onChange={(event) => setSearch(event.target.value)}
           />
         </div>
-        <FilterDrawer activeCount={filter === "all" ? 0 : 1} onReset={() => setFilter("all")}>
-          <Field label="Status">
-            <select aria-label="Filter requests by status" value={filter} onChange={(event) => setFilter(event.target.value)}>
-              <option value="all">All statuses ({state.requests.length})</option>
-              {statuses.map((status) => <option key={status} value={status}>{status[0].toUpperCase() + status.slice(1)} ({count(status)})</option>)}
-            </select>
-          </Field>
-        </FilterDrawer>
-        <span className="request-result-count">
-          {requests.length} {requests.length === 1 ? "request" : "requests"}
-        </span>
-        <Button size="sm" onClick={() => void refresh()}>
-          <RefreshCw size={14} /> Refresh
-        </Button>
       </div>
       {feedback && (
         <div className="workflow-alert" role="alert">

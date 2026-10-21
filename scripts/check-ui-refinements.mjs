@@ -235,7 +235,6 @@ try {
       .getByRole("heading", { name: "Request details", exact: true })
       .waitFor();
     await shot("request-overview", page.getByRole("dialog"));
-    await page.getByRole("button", { name: /^Comments/ }).click();
     await page
       .getByRole("textbox", { name: "Add a comment", exact: true })
       .fill(`Request comment at ${width}px`);
@@ -251,7 +250,6 @@ try {
       .click();
     await page.reload({ waitUntil: "networkidle" });
     await page.locator(".request-row").first().click();
-    await page.getByRole("button", { name: /^Comments/ }).click();
     await page
       .getByText(`Request comment at ${width}px`, { exact: true })
       .waitFor();

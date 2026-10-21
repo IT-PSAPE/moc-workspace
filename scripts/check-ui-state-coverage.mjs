@@ -1318,30 +1318,29 @@ async function keyboardAndErrors() {
     expect(row, "request-detail-close-restores-trigger-at-300ms", restore.after300ms, Boolean);
 
     await trigger.click();
-    await page.getByRole("dialog").waitFor();
-    await page.getByRole("button", { name: /^Comments/ }).click();
+    const requestDetail = page.getByRole("dialog");
+    await requestDetail.waitFor();
     const comment = page.locator('textarea[id^="comment-"]');
     await comment.waitFor();
-    await comment.fill("Request draft survives switching detail tabs.");
-    await page.getByRole("button", { name: "Overview" }).click();
-    expect(row, "request-draft-kept-while-hidden", await comment.inputValue(), (x) => x === "Request draft survives switching detail tabs.");
-    await page.getByRole("button", { name: /^Comments/ }).click();
-    expect(row, "request-draft-restored-on-comments-tab", await comment.inputValue(), (x) => x === "Request draft survives switching detail tabs.");
-    await shot(page, row, "request-comment-draft-preserved");
+    expect(row, "request-comments-visible-with-detail-content", {
+      titleVisible: await page.locator(".request-details h2").isVisible(),
+      commentVisible: await comment.isVisible(),
+    }, (value) => value.titleVisible && value.commentVisible);
+    await comment.fill("Request inline comment draft.");
+    expect(row, "request-comment-draft-kept-inline", await comment.inputValue(), (x) => x === "Request inline comment draft.");
+    await shot(page, row, "request-comment-draft-inline");
   });
   await pageCase("keyboard.request-and-task-filter-drawers", "keyboard", "desktop", async ({ row, page }) => {
     await page.goto(W + "/requests", { waitUntil: "domcontentloaded" });
     await ready(page);
     expect(row, "plain-filter-buttons", await page.locator('[role="tablist"], [role="tab"]').count(), (n) => n === 0);
-    await page.getByRole("button", { name: /^Filters/ }).click();
-    const requestFilterDrawer = page.getByRole("dialog", { name: "Filters" });
-    const requestFilter = requestFilterDrawer.getByLabel("Filter requests by status");
-    await requestFilter.selectOption("approved");
-    expect(row, "request-filter-select-updates-filtered-list", { value: await requestFilter.inputValue(), label: await page.locator(".request-list").getAttribute("aria-label") }, (value) => value.value === "approved" && value.label === "approved requests");
-    await requestFilterDrawer.getByRole("button", { name: "Reset filters", exact: true }).click();
-    expect(row, "request-filter-reset-selects-all", { value: await requestFilter.inputValue(), label: await page.locator(".request-list").getAttribute("aria-label") }, (value) => value.value === "all" && value.label === "all requests");
-    await requestFilterDrawer.getByRole("button", { name: "Done", exact: true }).click();
-    await requestFilterDrawer.waitFor({ state: "detached" });
+    const requestStatus = page.getByRole("group", { name: "Filter requests by status", exact: true });
+    const approvedStatus = requestStatus.getByRole("button", { name: /^Approved · \d+$/ });
+    await approvedStatus.click();
+    expect(row, "request-status-button-updates-filtered-list", { pressed: await approvedStatus.getAttribute("aria-pressed"), label: await page.locator(".request-list").getAttribute("aria-label") }, (value) => value.pressed === "true" && value.label === "approved requests");
+    const allStatuses = requestStatus.getByRole("button", { name: /^All · \d+$/ });
+    await allStatuses.click();
+    expect(row, "request-status-all-button-resets-filter", { pressed: await allStatuses.getAttribute("aria-pressed"), label: await page.locator(".request-list").getAttribute("aria-label") }, (value) => value.pressed === "true" && value.label === "all requests");
 
     // The workspace task-list route owns the task Filters drawer. A
     // department detail route exposes separate inline group/status controls.

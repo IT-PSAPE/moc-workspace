@@ -132,20 +132,34 @@ try {
     await workspace.goto(`${workspaceUrl}/requests`, {
       waitUntil: "networkidle",
     });
-    const requestFilter = workspace.getByRole("button", { name: /^Filters/ });
-    await requestFilter.click();
-    const requestStatus = workspace.getByRole("combobox", {
+    const requestStatus = workspace.getByRole("group", {
       name: "Filter requests by status",
       exact: true,
     });
-    assert.equal(await requestStatus.inputValue(), "pending");
+    const pendingStatus = requestStatus.getByRole("button", {
+      name: /^Pending · \d+$/,
+    });
+    assert.equal(await pendingStatus.getAttribute("aria-pressed"), "true");
     const pendingRequestCount = await workspace.locator(".request-row").count();
     assert.ok(pendingRequestCount > 0, "Default request filter shows pending work");
-    await workspace
-      .getByRole("button", { name: "Reset filters", exact: true })
-      .click();
-    assert.equal(await requestStatus.inputValue(), "all");
-    await workspace.getByRole("button", { name: "Done", exact: true }).click();
+    const approvedStatus = requestStatus.getByRole("button", {
+      name: /^Approved · \d+$/,
+    });
+    await approvedStatus.click();
+    assert.equal(await approvedStatus.getAttribute("aria-pressed"), "true");
+    assert.equal(
+      await workspace.locator(".request-list").getAttribute("aria-label"),
+      "approved requests",
+    );
+    const allStatuses = requestStatus.getByRole("button", {
+      name: /^All · \d+$/,
+    });
+    await allStatuses.click();
+    assert.equal(await allStatuses.getAttribute("aria-pressed"), "true");
+    assert.equal(
+      await workspace.locator(".request-list").getAttribute("aria-label"),
+      "all requests",
+    );
     assert.ok(
       (await workspace.locator(".request-row").count()) >= pendingRequestCount,
       "Resetting request filters restores all statuses",
@@ -398,6 +412,7 @@ try {
     console.log(
       `PASS ${width}px: validation → request → private code → pending edit → approval → task completion → public tracking; filters, calendar, CSV and member invitation form`,
     );
+    await context.unrouteAll({ behavior: "wait" });
     await context.close();
   }
 
@@ -454,6 +469,7 @@ try {
     .getByRole("heading", { name: "This department is private", exact: true })
     .waitFor();
   await snap(leader, "private-department-gate", 1440);
+  await leaderContext.unrouteAll({ behavior: "wait" });
   await leaderContext.close();
   console.log(
     "PASS department leader: request setup available, private reporting hidden, other team view-only, Cell 0 private",

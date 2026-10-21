@@ -606,15 +606,11 @@ function buildStates(sharedTrackingCode) {
   add("requests-filtered", "requests", async ({ page, session, vp }) => {
     await session.gotoWorkspace("/requests");
     await page.getByRole("heading", { level: 1 }).waitFor({ timeout: 15000 });
-    await page.getByRole("button", { name: /Filters/ }).click();
-    const filters = page.getByRole("dialog", { name: "Filters" });
-    await filters.waitFor({ state: "visible", timeout: 5000 });
-    const status = filters.getByRole("combobox", {
-      name: /Filter requests by status/i,
+    const status = page.getByRole("group", {
+      name: "Filter requests by status",
+      exact: true,
     });
-    const firstNonAllValue = await status.locator("option").nth(1).getAttribute("value");
-    if (!firstNonAllValue) throw new Error("No request status filter options available");
-    await status.selectOption(firstNonAllValue);
+    await status.getByRole("button", { name: /^Approved · \d+$/ }).click();
     await settle(page);
     await shoot(page, vp, "requests-filtered");
   });

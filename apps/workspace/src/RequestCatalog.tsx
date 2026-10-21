@@ -269,6 +269,8 @@ export default function RequestCatalog() {
         onClose={() => setOpen(false)}
         title="Request options"
         className="management-drawer request-catalog-drawer"
+        side="right"
+        drawerWidth={860}
       >
         <div className="request-catalog flex min-w-0 flex-col gap-3">
           <SegmentedControl

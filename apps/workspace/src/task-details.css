@@ -1,18 +1,6 @@
 .task-detail-modal {
   --modal-width: 720px;
 }
-.modal-panel.task-detail-modal:has(.request-details) {
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: auto;
-  width: min(560px, 100vw);
-  height: 100dvh;
-  max-height: 100dvh;
-  transform: none;
-  border-radius: 0;
-  animation: moc-fade var(--duration-base) var(--ease-out);
-}
 .task-detail-modal > .modal-content {
   padding: 0;
 }

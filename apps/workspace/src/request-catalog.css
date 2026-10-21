@@ -10,18 +10,6 @@
   scrollbar-gutter: stable;
 }
 
-@media (width >= 768px) {
-  .modal-panel.request-catalog-drawer {
-    width: min(860px, calc(100vw - 64px));
-  }
-}
-
-@media (width < 768px) {
-  .modal-panel.request-catalog-drawer {
-    width: 100vw;
-  }
-}
-
 .request-catalog-table .inline-edit-cell__read {
   min-height: 32px;
   padding: 4px 5px;

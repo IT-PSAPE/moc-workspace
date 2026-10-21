@@ -15,7 +15,7 @@ export function SideDrawer({ open, onClose, title, children }: SideDrawerProps) 
       open={open}
       onClose={onClose}
       title={title}
-      className="!fixed !inset-y-0 !right-0 !bottom-0 !left-auto !top-0 !h-[100dvh] !max-h-[100dvh] !w-screen min-[768px]:!w-[360px] !max-w-[100vw] !translate-x-0 !translate-y-0 !transform-none !animate-none !rounded-none"
+      side="right"
     >
       <div className="flex min-h-full flex-col">{children}</div>
     </Modal>

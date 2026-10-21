@@ -123,15 +123,6 @@
   font-size: 13px;
   margin: 0;
 }
-.modal-panel.management-drawer {
-  inset: 0 0 0 auto;
-  transform: none;
-  width: min(560px, 100vw);
-  height: 100dvh;
-  max-height: 100dvh;
-  border-radius: 0;
-  animation: moc-fade var(--duration-base) var(--ease-out);
-}
 .management-drawer .modal-content {
   padding: 16px;
 }

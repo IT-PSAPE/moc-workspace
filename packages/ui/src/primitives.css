@@ -600,3 +600,27 @@ button {
   overscroll-behavior: contain;
   padding: 16px 20px;
 }
+
+/* Side drawers share floating geometry at every viewport size. Consumers
+   select a side and optional width; ordinary dialogs keep their own layout. */
+.modal-panel[data-side] {
+  --drawer-inset-top: max(var(--space-2), env(safe-area-inset-top, 0px));
+  --drawer-inset-right: max(var(--space-2), env(safe-area-inset-right, 0px));
+  --drawer-inset-bottom: max(var(--space-2), env(safe-area-inset-bottom, 0px));
+  --drawer-inset-left: max(var(--space-2), env(safe-area-inset-left, 0px));
+  top: var(--drawer-inset-top);
+  right: var(--drawer-inset-right);
+  bottom: var(--drawer-inset-bottom);
+  left: auto;
+  width: min(var(--drawer-width, 360px), calc(100vw - var(--drawer-inset-left) - var(--drawer-inset-right)));
+  height: calc(100dvh - var(--drawer-inset-top) - var(--drawer-inset-bottom));
+  max-height: calc(100dvh - var(--drawer-inset-top) - var(--drawer-inset-bottom));
+  transform: none;
+  border-radius: var(--radius-2xl);
+  animation: moc-fade var(--duration-base) var(--ease-out);
+}
+
+.modal-panel[data-side="left"] {
+  right: auto;
+  left: var(--drawer-inset-left);
+}

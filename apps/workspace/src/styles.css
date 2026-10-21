@@ -603,16 +603,6 @@
   .heading-actions {
     flex-wrap: wrap;
   }
-  .navigation-drawer {
-    inset: 0 auto 0 0;
-    transform: none;
-    width: min(88vw, 360px);
-    max-height: 100dvh;
-    height: 100dvh;
-    border-radius: 0;
-    padding: 12px;
-    animation: none;
-  }
   .navigation-drawer .nav-item {
     min-height: 44px;
   }

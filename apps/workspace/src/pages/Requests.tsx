@@ -231,6 +231,8 @@ export default function RequestsPage() {
         onClose={() => setSelectedId(null)}
         title="Request details"
         className="task-detail-modal"
+        side="right"
+        drawerWidth={560}
       >
         {selected && (
           <RequestDetails key={selected.id} request={selected}>

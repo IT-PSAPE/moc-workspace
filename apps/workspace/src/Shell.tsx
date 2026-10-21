@@ -309,7 +309,8 @@ export default function Shell({ children }: { children: ReactNode }) {
           open={navigationOpen}
           onClose={closeNavigation}
           title="MOC Workspace"
-          className="navigation-drawer"
+          className="navigation-drawer p-3"
+          side="left"
         >
           <nav className="mobile-menu" aria-label="All workspace pages">
             {navigation.map(({ label, href, icon: Icon }) => (

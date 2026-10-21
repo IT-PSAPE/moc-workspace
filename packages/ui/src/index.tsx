@@ -4,6 +4,7 @@ import {
   isValidElement,
   useId,
   type ButtonHTMLAttributes,
+  type CSSProperties,
   type ReactElement,
   type ReactNode,
 } from "react";
@@ -37,12 +38,16 @@ export function Modal({
   title,
   children,
   className = "",
+  side,
+  drawerWidth,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
   className?: string;
+  side?: "left" | "right";
+  drawerWidth?: number;
 }) {
   return (
     <Dialog.Root
@@ -55,6 +60,12 @@ export function Modal({
         <Dialog.Backdrop className="modal-backdrop" />
         <Dialog.Popup
           className={`modal-panel ${className}`}
+          data-side={side}
+          style={
+            side && drawerWidth
+              ? ({ "--drawer-width": `${drawerWidth}px` } as CSSProperties)
+              : undefined
+          }
           aria-describedby={undefined}
         >
           <div className="modal-heading">

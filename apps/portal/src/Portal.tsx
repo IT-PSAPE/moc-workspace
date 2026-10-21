@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -6,21 +7,24 @@ import {
   type ReactNode,
 } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Tabs } from "@base-ui/react/tabs";
 import {
+  ArrowLeft,
   ArrowRight,
+  CalendarClock,
   Check,
+  ChevronRight,
   ChevronDown,
+  CircleAlert,
   Clock3,
   Copy,
+  FileText,
   LockKeyhole,
   Plus,
+  ShieldCheck,
   X,
 } from "lucide-react";
 import {
-  DEPARTMENTS,
-  MINISTRIES,
-  SERVICES,
+  type Catalog,
   type PublicRequest,
   type PublicTracking,
   type RequestInput,
@@ -30,8 +34,28 @@ import {
 import { api, ApiError } from "@moc/client";
 import "./styles.css";
 
-type Tab = "request" | "track";
-type Catalog = { services: Service[]; ministries: string[] };
+type Screen = "home" | "request" | "track";
+type CatalogStatus = "loading" | "error" | "empty";
+
+type FieldKey =
+  | "ministry"
+  | "service"
+  | "title"
+  | "instructions"
+  | "notes"
+  | "airedDates"
+  | "dueAt";
+type FieldErrors = Partial<Record<FieldKey, string>>;
+
+const fieldMessageId = (controlId: string, kind: "hint" | "error") =>
+  `${controlId}-${kind}`;
+
+const fieldDescribedBy = (controlId: string, error?: string, hint?: string) =>
+  error
+    ? fieldMessageId(controlId, "error")
+    : hint
+      ? fieldMessageId(controlId, "hint")
+      : undefined;
 
 const todayIsoDate = () => {
   const today = new Date();
@@ -70,55 +94,85 @@ const prettyDate = (value: string) =>
 
 function Field({
   label,
+  controlId,
   children,
   required = false,
   hint,
+  error,
 }: {
   label: string;
+  controlId: string;
   children: ReactNode;
   required?: boolean;
   hint?: string;
+  error?: string;
 }) {
   return (
-    <label className="portal-field">
-      <span className="portal-field-label">
+    <div className="portal-field" data-invalid={error ? "true" : undefined}>
+      <label className="portal-field-label" htmlFor={controlId}>
         {label}
         {required && (
           <span className="required-mark" aria-hidden="true">
             *
           </span>
         )}
-      </span>
+      </label>
       {children}
-      {hint && <span className="portal-field-hint">{hint}</span>}
-    </label>
+      {error ? (
+        <span
+          className="portal-field-error"
+          id={fieldMessageId(controlId, "error")}
+          role="alert"
+        >
+          <CircleAlert size={14} aria-hidden="true" />
+          {error}
+        </span>
+      ) : (
+        hint && (
+          <span
+            className="portal-field-hint"
+            id={fieldMessageId(controlId, "hint")}
+          >
+            {hint}
+          </span>
+        )
+      )}
+    </div>
   );
 }
 
 function SelectField({
   label,
+  name,
   value,
   options,
   placeholder,
   disabled = false,
   required = true,
+  error,
   onChange,
 }: {
   label: string;
+  name: string;
   value: string;
   options: { value: string; label: string }[];
   placeholder: string;
   disabled?: boolean;
   required?: boolean;
+  error?: string;
   onChange: (value: string) => void;
 }) {
   return (
-    <Field label={label} required={required}>
+    <Field label={label} controlId={name} required={required} error={error}>
       <span className={`select-wrap${disabled ? " is-disabled" : ""}`}>
         <select
+          id={name}
+          name={name}
           required={required}
           disabled={disabled}
           value={value}
+          aria-invalid={error ? "true" : undefined}
+          aria-describedby={fieldDescribedBy(name, error)}
           onChange={(event) => onChange(event.target.value)}
         >
           <option value="">{placeholder}</option>
@@ -153,22 +207,32 @@ function safeApiError(error: unknown, action: "track" | "save" | "send") {
   return "We couldn’t send your request. Please try again.";
 }
 
-function requestInputForApi(
+function validateDraft(
   draft: RequestInput,
   service?: Service,
-): { input?: RequestInput; error?: string } {
-  const dueDate = new Date(draft.dueAt);
-  if (!Number.isFinite(dueDate.valueOf()))
-    return { error: "Choose a valid completion date and time." };
-  if (dueDate.getTime() <= Date.now())
-    return { error: "Choose a future date and time for completion." };
+): { input?: RequestInput; fieldErrors: FieldErrors } {
+  const fieldErrors: FieldErrors = {};
+  if (!draft.service) fieldErrors.service = "Choose a request type.";
+  if (!draft.ministry) fieldErrors.ministry = "Choose a ministry.";
+  if (!draft.title.trim())
+    fieldErrors.title = "Add a short title for this request.";
+  if (!draft.instructions.trim())
+    fieldErrors.instructions = "Describe what you need.";
+  if (!draft.notes.trim())
+    fieldErrors.notes = "Add a note, even if it’s brief.";
   if (service?.requiresAiredDates && !(draft.airedDates ?? []).some(Boolean)) {
-    return {
-      error:
-        "Add at least one exact aired date to retrieve a previously aired video.",
-    };
+    fieldErrors.airedDates =
+      "Add at least one exact aired date to retrieve a previously aired video.";
   }
+  const dueDate = new Date(draft.dueAt);
+  if (!draft.dueAt || !Number.isFinite(dueDate.valueOf())) {
+    fieldErrors.dueAt = "Choose a valid completion date and time.";
+  } else if (dueDate.getTime() <= Date.now()) {
+    fieldErrors.dueAt = "Choose a future date and time for completion.";
+  }
+  if (Object.keys(fieldErrors).length > 0) return { fieldErrors };
   return {
+    fieldErrors,
     input: {
       ...draft,
       dueAt: dueDate.toISOString(),
@@ -180,9 +244,12 @@ function requestInputForApi(
 }
 
 export default function Portal() {
-  const [tab, setTab] = useState<Tab>("request");
+  const [screen, setScreen] = useState<Screen>("home");
+  const [createStep, setCreateStep] = useState(1);
   const [createForm, setCreateForm] = useState<RequestInput>(blankRequest);
   const [editForm, setEditForm] = useState<RequestInput>(blankRequest);
+  const [createFieldErrors, setCreateFieldErrors] = useState<FieldErrors>({});
+  const [editFieldErrors, setEditFieldErrors] = useState<FieldErrors>({});
   const [trackingCodeInput, setTrackingCodeInput] = useState("");
   const [tracking, setTracking] = useState<PublicTracking | null>(null);
   const [receipt, setReceipt] = useState<SubmissionReceipt | null>(null);
@@ -191,10 +258,40 @@ export default function Portal() {
   );
   const [editSaved, setEditSaved] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
   const [formError, setFormError] = useState("");
   const [trackError, setTrackError] = useState("");
+  const [validationFocusRequest, setValidationFocusRequest] = useState<{
+    field: FieldKey;
+    sequence: number;
+  } | null>(null);
   const lookupSequence = useRef(0);
+  const validationFocusSequence = useRef(0);
   const activeTrackingCodeRef = useRef<string | null>(null);
+  const requestStepHeadingRef = useRef<HTMLHeadingElement>(null);
+  const copyFallbackRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (screen === "request" && !receipt)
+      requestStepHeadingRef.current?.focus();
+  }, [screen, createStep, receipt]);
+
+  useEffect(() => {
+    if (!validationFocusRequest) return;
+    const { field } = validationFocusRequest;
+    const targetId = field === "airedDates" ? "aired-date-0" : field;
+    const target =
+      document.getElementById(targetId) ??
+      (field === "airedDates"
+        ? document.getElementById("add-aired-date")
+        : null);
+    target?.focus();
+    setValidationFocusRequest(null);
+  }, [validationFocusRequest]);
+
+  useEffect(() => {
+    if (copyFailed) copyFallbackRef.current?.select();
+  }, [copyFailed]);
 
   const catalogQuery = useQuery({
     queryKey: ["public-catalog"],
@@ -202,14 +299,29 @@ export default function Portal() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const services = catalogQuery.data?.services ?? SERVICES;
+  const services = catalogQuery.data?.services ?? [];
   const ministries = useMemo(
     () =>
-      (catalogQuery.data?.ministries ?? MINISTRIES)
+      (catalogQuery.data?.ministries ?? [])
         .slice()
         .sort((a, b) => a.localeCompare(b)),
     [catalogQuery.data?.ministries],
   );
+  const departments = catalogQuery.data?.departments ?? [];
+  const catalogAvailable =
+    !!catalogQuery.data &&
+    ministries.length > 0 &&
+    services.length > 0 &&
+    departments.length > 0;
+  const catalogStatus: CatalogStatus | null = catalogAvailable
+    ? null
+    : catalogQuery.isLoading || catalogQuery.isFetching
+      ? "loading"
+      : catalogQuery.isError
+        ? "error"
+        : catalogQuery.data
+          ? "empty"
+          : "loading";
   const orderedServices = useMemo(
     () => services.slice().sort((a, b) => a.name.localeCompare(b.name)),
     [services],
@@ -239,6 +351,7 @@ export default function Portal() {
       setReceipt(result);
       setFormError("");
       setCopied(false);
+      setCopyFailed(false);
     },
     onError: (error) => setFormError(safeApiError(error, "send")),
   });
@@ -255,6 +368,7 @@ export default function Portal() {
       setActiveTrackingCode(variables.code);
       activeTrackingCodeRef.current = variables.code;
       setEditSaved(false);
+      setEditFieldErrors({});
       setEditForm({
         ...result.request,
         dueAt: localDateTime(result.request.dueAt),
@@ -311,11 +425,19 @@ export default function Portal() {
 
   const updateDraft = (
     setter: typeof setCreateForm,
+    setErrors: typeof setCreateFieldErrors,
     key: keyof RequestInput,
     value: string | string[],
   ) => {
     setEditSaved(false);
     setFormError("");
+    setErrors((previous) => {
+      if (!(key in previous) && key !== "service") return previous;
+      const next = { ...previous };
+      delete next[key as FieldKey];
+      if (key === "service") delete next.airedDates;
+      return next;
+    });
     setter((previous) => {
       if (key === "service" && typeof value === "string") {
         const service = services.find((item) => item.id === value);
@@ -335,18 +457,64 @@ export default function Portal() {
 
   const submitCreateRequest = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!catalogAvailable) {
+      setCreateStep(1);
+      setFormError("");
+      return;
+    }
+    const { input, fieldErrors } = validateDraft(
+      createForm,
+      selectedCreateService,
+    );
+    setCreateFieldErrors(fieldErrors);
+    if (!input) {
+      setFormError("Check the highlighted fields and try again.");
+      const firstError = Object.keys(fieldErrors)[0] as FieldKey | undefined;
+      setCreateStep(1);
+      if (firstError)
+        setValidationFocusRequest({
+          field: firstError,
+          sequence: ++validationFocusSequence.current,
+        });
+      return;
+    }
     setFormError("");
-    const prepared = requestInputForApi(createForm, selectedCreateService);
-    if (!prepared.input)
-      return setFormError(
-        prepared.error ?? "Check the request details and try again.",
-      );
-    submitMutation.mutate(prepared.input);
+    submitMutation.mutate(input);
+  };
+
+  const validateCreateForm = () => {
+    const { fieldErrors } = validateDraft(createForm, selectedCreateService);
+    setCreateFieldErrors(fieldErrors);
+    if (Object.keys(fieldErrors).length > 0) {
+      setFormError("Check the highlighted fields and try again.");
+      const firstError = Object.keys(fieldErrors)[0] as FieldKey | undefined;
+      if (firstError)
+        setValidationFocusRequest({
+          field: firstError,
+          sequence: ++validationFocusSequence.current,
+        });
+      return false;
+    }
+    setFormError("");
+    return true;
+  };
+
+  const submitCreateStep = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!catalogAvailable) {
+      setCreateStep(1);
+      setFormError("");
+      return;
+    }
+    if (createStep === 2) {
+      submitCreateRequest(event);
+      return;
+    }
+    if (validateCreateForm()) setCreateStep(2);
   };
 
   const submitEditRequest = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setFormError("");
     if (
       !tracking ||
       tracking.request.status !== "pending" ||
@@ -357,18 +525,27 @@ export default function Portal() {
       );
       return;
     }
-    const prepared = requestInputForApi(editForm, selectedEditService);
-    if (!prepared.input)
-      return setFormError(
-        prepared.error ?? "Check the request details and try again.",
-      );
-    editMutation.mutate({ code: activeTrackingCode, input: prepared.input });
+    const { input, fieldErrors } = validateDraft(editForm, selectedEditService);
+    setEditFieldErrors(fieldErrors);
+    if (!input) {
+      setFormError("Check the highlighted fields and try again.");
+      const firstError = Object.keys(fieldErrors)[0] as FieldKey | undefined;
+      if (firstError)
+        setValidationFocusRequest({
+          field: firstError,
+          sequence: ++validationFocusSequence.current,
+        });
+      return;
+    }
+    setFormError("");
+    editMutation.mutate({ code: activeTrackingCode, input });
   };
 
   const beginLookup = (code: string) => {
     const id = ++lookupSequence.current;
     setTracking(null);
     setEditForm(blankRequest());
+    setEditFieldErrors({});
     setActiveTrackingCode(null);
     activeTrackingCodeRef.current = null;
     setEditSaved(false);
@@ -392,7 +569,10 @@ export default function Portal() {
       window.setTimeout(() => setCopied(false), 1800);
     } catch {
       setCopied(false);
-      setFormError("Copy is unavailable here. Select the code to copy it.");
+      setCopyFailed(true);
+      setFormError(
+        "Copy is unavailable here. The code is selected below; copy it using your device’s usual command.",
+      );
     }
   };
 
@@ -403,6 +583,7 @@ export default function Portal() {
       dueAt: localDateTime(tracking.request.dueAt),
       airedDates: tracking.request.airedDates ?? [],
     });
+    setEditFieldErrors({});
     setEditSaved(false);
     setFormError("");
   };
@@ -410,9 +591,12 @@ export default function Portal() {
   const startAnotherRequest = () => {
     setReceipt(null);
     setCreateForm(blankRequest());
+    setCreateFieldErrors({});
     setFormError("");
     setEditSaved(false);
-    setTab("request");
+    setCopyFailed(false);
+    setCreateStep(1);
+    setScreen("request");
   };
 
   const openReceiptTracking = () => {
@@ -420,39 +604,129 @@ export default function Portal() {
     const code = receipt.trackingCode;
     setTrackingCodeInput(code);
     setTrackError("");
-    setTab("track");
+    setScreen("track");
     beginLookup(code);
   };
 
+  const startRequest = () => {
+    setScreen("request");
+    setCreateStep(1);
+    setCreateFieldErrors({});
+    setFormError("");
+  };
+
+  const startTracking = () => setScreen("track");
+
+  const handleFlowBack = () => {
+    if (screen === "request" && createStep > 1 && !receipt) {
+      setCreateStep((step) => step - 1);
+      return;
+    }
+    setScreen("home");
+  };
+
   return (
-    <div className="portal-page">
+    <div className={`portal-page portal-page-${screen}`}>
+      {screen === "home" && (
+        <img
+          className="portal-background"
+          src="/assets/light/background-sky.avif"
+          alt=""
+          aria-hidden="true"
+        />
+      )}
+      <a className="portal-skip-link" href="#main-content">
+        Skip to main content
+      </a>
       <header className="portal-header">
-        <a className="portal-brand" href="/" aria-label="MOC home">
-          MOC
-        </a>
-      </header>
-      <main className="portal-main">
-        <section className="portal-intro" aria-labelledby="portal-title">
-          <h1 id="portal-title">Ministry requests</h1>
-          <p>Request creative support or check your progress.</p>
-        </section>
-
-        <section className="portal-card" aria-label="Request and tracking">
-          <Tabs.Root
-            value={tab}
-            onValueChange={(value) => setTab(value as Tab)}
-            className="portal-tabs-root"
+        <div className="portal-header-inner">
+          <button
+            className="portal-brand"
+            type="button"
+            onClick={() => setScreen("home")}
+            aria-label="MOC home"
           >
-            <Tabs.List className="portal-tabs" aria-label="Request options">
-              <Tabs.Tab value="request" className="portal-tab">
-                Make a request
-              </Tabs.Tab>
-              <Tabs.Tab value="track" className="portal-tab">
-                Track &amp; edit
-              </Tabs.Tab>
-            </Tabs.List>
+            <span className="portal-logo-wrap">
+              <img src="/logo.svg" alt="" width="40" height="40" />
+            </span>
+            <span>MOC</span>
+          </button>
+          {screen !== "home" && (
+            <button
+              className="portal-close"
+              type="button"
+              onClick={() => setScreen("home")}
+              aria-label="Go to home page"
+            >
+              <X size={22} aria-hidden="true" />
+            </button>
+          )}
+        </div>
+      </header>
 
-            <Tabs.Panel value="request" className="portal-panel">
+      <main className="portal-main" id="main-content" tabIndex={-1}>
+        {screen === "home" && (
+          <section className="portal-home" aria-labelledby="portal-title">
+            <h1 id="portal-title">MOC Request Portal</h1>
+            <div className="portal-options">
+              <button
+                className="portal-option-card"
+                type="button"
+                onClick={startRequest}
+              >
+                <span className="portal-option-icon">
+                  <img
+                    src="/assets/light/icon_inbox.avif"
+                    alt=""
+                    width="64"
+                    height="64"
+                  />
+                </span>
+                <span className="portal-option-copy">
+                  <strong>Make a request</strong>
+                  <span>
+                    Submit a new production or media request with full details.
+                  </span>
+                </span>
+                <ChevronRight size={18} aria-hidden="true" />
+              </button>
+              <button
+                className="portal-option-card"
+                type="button"
+                onClick={startTracking}
+              >
+                <span className="portal-option-icon">
+                  <img
+                    src="/assets/light/icon_folder.avif"
+                    alt=""
+                    width="64"
+                    height="64"
+                  />
+                </span>
+                <span className="portal-option-copy">
+                  <strong>Track a submission</strong>
+                  <span>Look up the status of an existing request.</span>
+                </span>
+                <ChevronRight size={18} aria-hidden="true" />
+              </button>
+            </div>
+          </section>
+        )}
+
+        {screen === "request" && (
+          <>
+            <header className="flow-header">
+              <button
+                className="flow-back"
+                type="button"
+                onClick={handleFlowBack}
+              >
+                <ArrowLeft size={18} aria-hidden="true" /> Back
+              </button>
+              <h1>{receipt ? "Submission received" : "New request"}</h1>
+              <span aria-hidden="true" />
+            </header>
+            <div className="request-flow-content">
               {receipt ? (
                 <div className="request-success" role="status">
                   <div className="success-mark">
@@ -466,7 +740,8 @@ export default function Portal() {
                   </p>
                   {formError && (
                     <div className="portal-error" role="alert">
-                      {formError}
+                      <CircleAlert size={16} aria-hidden="true" />
+                      <span>{formError}</span>
                     </div>
                   )}
                   <div className="access-code-wrap">
@@ -478,7 +753,7 @@ export default function Portal() {
                         {receipt.trackingCode}
                       </code>
                       <button
-                        className="copy-button"
+                        className="button button-secondary copy-button"
                         type="button"
                         onClick={() => void copyCode()}
                         aria-label="Copy private access code"
@@ -487,7 +762,19 @@ export default function Portal() {
                         <span>{copied ? "Copied" : "Copy"}</span>
                       </button>
                     </div>
+                    {copyFailed && (
+                      <textarea
+                        ref={copyFallbackRef}
+                        className="access-code-fallback"
+                        aria-label="Private access code for manual copying"
+                        readOnly
+                        rows={2}
+                        value={receipt.trackingCode}
+                        onFocus={(event) => event.currentTarget.select()}
+                      />
+                    )}
                     <span className="code-safety">
+                      <ShieldCheck size={14} aria-hidden="true" />
                       Anyone with this code can view and edit your request.
                     </span>
                   </div>
@@ -500,7 +787,7 @@ export default function Portal() {
                       Track this request <ArrowRight size={17} />
                     </button>
                     <button
-                      className="button button-quiet"
+                      className="button button-secondary"
                       type="button"
                       onClick={startAnotherRequest}
                     >
@@ -510,42 +797,95 @@ export default function Portal() {
                 </div>
               ) : (
                 <>
-                  <div className="panel-heading">
-                    <h2>Request details</h2>
+                  <div
+                    className="request-progress"
+                    role="img"
+                    aria-label={`Request steps, step ${createStep} of 2`}
+                  >
+                    {[1, 2].map((step) => (
+                      <span
+                        key={step}
+                        data-active={step <= createStep ? "true" : undefined}
+                      />
+                    ))}
                   </div>
+                  <h2
+                    className="request-step-heading"
+                    ref={requestStepHeadingRef}
+                    tabIndex={-1}
+                    aria-live="polite"
+                  >
+                    {createStep === 1
+                      ? "Step 1: Request details"
+                      : "Step 2: Review and confirm"}
+                  </h2>
                   <RequestForm
                     form={createForm}
                     ministries={ministries}
                     services={orderedServices}
                     selectedService={selectedCreateService}
+                    catalogStatus={catalogStatus}
+                    catalogRetrying={catalogQuery.isFetching}
+                    canSubmit={catalogAvailable}
+                    onRetryCatalog={() => void catalogQuery.refetch()}
                     shortNotice={createShortNotice}
                     isEditing={false}
                     busy={submitMutation.isPending}
                     error={formError}
+                    fieldErrors={createFieldErrors}
+                    step={createStep}
                     onChange={(key, value) =>
-                      updateDraft(setCreateForm, key, value)
+                      updateDraft(
+                        setCreateForm,
+                        setCreateFieldErrors,
+                        key,
+                        value,
+                      )
                     }
-                    onSubmit={submitCreateRequest}
-                    onCancel={() => {}}
+                    onSubmit={submitCreateStep}
+                    onCancel={handleFlowBack}
                   />
                 </>
               )}
-            </Tabs.Panel>
+            </div>
+          </>
+        )}
 
-            <Tabs.Panel value="track" className="portal-panel">
-              <div className="panel-heading">
-                <h2>Find your request</h2>
-                <p>Enter the access code you saved when submitting.</p>
+        {screen === "track" && (
+          <>
+            <header className="flow-header">
+              <button
+                className="flow-back"
+                type="button"
+                onClick={handleFlowBack}
+              >
+                <ArrowLeft size={18} aria-hidden="true" /> Back
+              </button>
+              <div className="flow-title">
+                <h1>Track submission</h1>
+                <p>
+                  Enter your tracking code to view the status of your request.
+                </p>
               </div>
+              <span aria-hidden="true" />
+            </header>
+            <section className="track-content-wrap">
               {trackError && (
                 <div className="portal-error" role="alert">
-                  {trackError}
+                  <CircleAlert size={16} aria-hidden="true" />
+                  <span>{trackError}</span>
                 </div>
               )}
               <form className="track-form" onSubmit={trackRequest}>
-                <Field label="Private access code" required>
+                <Field
+                  label="Private access code"
+                  controlId="tracking-code"
+                  required
+                >
                   <input
                     className="portal-input code-input"
+                    id="tracking-code"
+                    name="tracking-code"
                     required
                     value={trackingCodeInput}
                     onChange={(event) => {
@@ -555,6 +895,7 @@ export default function Portal() {
                       setActiveTrackingCode(null);
                       activeTrackingCodeRef.current = null;
                       setEditForm(blankRequest());
+                      setEditFieldErrors({});
                       setTrackError("");
                       setFormError("");
                       setEditSaved(false);
@@ -562,8 +903,8 @@ export default function Portal() {
                     autoComplete="off"
                     autoCapitalize="characters"
                     spellCheck={false}
-                    aria-label="Private access code"
-                    placeholder="Enter your 24-character code"
+                    placeholder="MOC-XXXXXX-XXXXXX-XXXXXX-XXXXXX"
+                    aria-describedby={fieldDescribedBy("tracking-code")}
                   />
                 </Field>
                 <button
@@ -571,19 +912,20 @@ export default function Portal() {
                   type="submit"
                   disabled={trackMutation.isPending}
                 >
-                  {trackMutation.isPending ? "Checking…" : "Find request"}
-                  {!trackMutation.isPending && <ArrowRight size={17} />}
+                  {trackMutation.isPending ? "Checking…" : "Search"}
                 </button>
               </form>
               {tracking && (
                 <div className="track-content" aria-live="polite">
-                  <TrackingSummary result={tracking} />
+                  <TrackingSummary
+                    result={tracking}
+                    services={services}
+                    departments={departments}
+                  />
                   {tracking.request.status === "pending" ? (
                     <div className="edit-section">
                       <div className="edit-heading">
-                        <div>
-                          <h3>Make changes</h3>
-                        </div>
+                        <h2>Make changes</h2>
                         <span className="edit-available">
                           You can edit while pending
                         </span>
@@ -595,7 +937,8 @@ export default function Portal() {
                       )}
                       {formError && (
                         <div className="portal-error" role="alert">
-                          {formError}
+                          <CircleAlert size={16} aria-hidden="true" />
+                          <span>{formError}</span>
                         </div>
                       )}
                       {activeTrackingCode ? (
@@ -604,35 +947,45 @@ export default function Portal() {
                           ministries={ministries}
                           services={orderedServices}
                           selectedService={selectedEditService}
+                          canSubmit
                           shortNotice={editShortNotice}
                           isEditing
                           busy={editMutation.isPending}
-                          error={""}
+                          error=""
+                          fieldErrors={editFieldErrors}
                           onChange={(key, value) =>
-                            updateDraft(setEditForm, key, value)
+                            updateDraft(
+                              setEditForm,
+                              setEditFieldErrors,
+                              key,
+                              value,
+                            )
                           }
                           onSubmit={submitEditRequest}
                           onCancel={cancelEdit}
                         />
                       ) : (
-                        <RequestDetails request={tracking.request} />
+                        <RequestDetails
+                          request={tracking.request}
+                          services={services}
+                        />
                       )}
                     </div>
                   ) : (
                     <div className="closed-request">
                       <p>Edits are closed for this request.</p>
-                      <RequestDetails request={tracking.request} />
+                      <RequestDetails
+                        request={tracking.request}
+                        services={services}
+                      />
                     </div>
                   )}
                 </div>
               )}
-            </Tabs.Panel>
-          </Tabs.Root>
-        </section>
+            </section>
+          </>
+        )}
       </main>
-      <footer className="portal-footer">
-        © {new Date().getFullYear()} MOC Ministry Services
-      </footer>
     </div>
   );
 }
@@ -642,10 +995,16 @@ function RequestForm({
   ministries,
   services,
   selectedService,
+  catalogStatus = null,
+  catalogRetrying = false,
+  canSubmit = true,
+  onRetryCatalog,
   shortNotice,
   isEditing,
   busy,
   error,
+  fieldErrors,
+  step = 1,
   onChange,
   onSubmit,
   onCancel,
@@ -654,158 +1013,354 @@ function RequestForm({
   ministries: string[];
   services: Service[];
   selectedService?: Service;
+  catalogStatus?: CatalogStatus | null;
+  catalogRetrying?: boolean;
+  canSubmit?: boolean;
+  onRetryCatalog?: () => void;
   shortNotice: boolean;
   isEditing: boolean;
   busy: boolean;
   error: string;
+  fieldErrors: FieldErrors;
+  step?: number;
   onChange: (key: keyof RequestInput, value: string | string[]) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onCancel: () => void;
 }) {
   return (
-    <form className="request-form" onSubmit={onSubmit}>
+    <form
+      className="request-form"
+      data-editing={isEditing ? "true" : "false"}
+      data-step={step}
+      data-has-error={error ? "true" : "false"}
+      onSubmit={onSubmit}
+      noValidate
+    >
+      {catalogStatus && (
+        <div
+          className="catalog-state"
+          role={catalogStatus === "error" ? "alert" : "status"}
+          aria-live="polite"
+        >
+          <span>
+            {catalogStatus === "loading"
+              ? "Loading request options…"
+              : catalogStatus === "error"
+                ? "We couldn’t load request options."
+                : "No request options are available yet."}
+          </span>
+          {catalogStatus !== "loading" && onRetryCatalog && (
+            <button
+              className="catalog-retry"
+              type="button"
+              onClick={onRetryCatalog}
+              disabled={catalogRetrying}
+            >
+              {catalogRetrying ? "Retrying…" : "Retry"}
+            </button>
+          )}
+        </div>
+      )}
       {error && (
         <div className="portal-error" role="alert">
-          {error}
+          <CircleAlert size={16} aria-hidden="true" />
+          <span>{error}</span>
         </div>
       )}
-      <div className="form-row">
-        <SelectField
-          label="Ministry"
-          value={form.ministry}
-          disabled={isEditing}
-          placeholder="Choose a ministry"
-          options={ministries.map((ministry) => ({
-            value: ministry,
-            label: ministry,
-          }))}
-          onChange={(value) => onChange("ministry", value)}
-        />
-        <SelectField
-          label="Service"
-          value={form.service}
-          placeholder="Choose a service"
-          options={services.map((service) => ({
-            value: service.id,
-            label: service.name,
-          }))}
-          onChange={(value) => onChange("service", value)}
-        />
-      </div>
-      <Field label="Request title" required>
-        <input
-          className="portal-input"
-          required
-          maxLength={120}
-          value={form.title}
-          onChange={(event) => onChange("title", event.target.value)}
-          placeholder="e.g. Youth retreat recap video"
-        />
-      </Field>
-      <Field label="Detailed instructions" required>
-        <textarea
-          className="portal-input"
-          required
-          rows={4}
-          value={form.instructions}
-          onChange={(event) => onChange("instructions", event.target.value)}
-          placeholder="Describe what you need…"
-        />
-      </Field>
-      <Field label="Additional notes" required>
-        <textarea
-          className="portal-input"
-          required
-          rows={3}
-          value={form.notes}
-          onChange={(event) => onChange("notes", event.target.value)}
-          placeholder="Anything else we should know?"
-        />
-      </Field>
-      {selectedService?.requiresAiredDates && (
-        <div className="aired-dates-block">
-          <div className="aired-heading">
-            <div>
-              <strong>Exact aired dates</strong>
-              <span>Needed to find a previously aired video.</span>
+
+      {(isEditing || step === 1) && (
+        <div className="form-section request-basics">
+          {isEditing && (
+            <div className="form-section-heading">
+              <FileText size={16} aria-hidden="true" />
+              <h3>What you need</h3>
             </div>
-            <span className="required-pill">REQUIRED</span>
+          )}
+          <div className="form-row">
+            <SelectField
+              label="Request type"
+              name="service"
+              value={form.service}
+              disabled={services.length === 0}
+              placeholder="Choose a request type"
+              options={services.map((service) => ({
+                value: service.id,
+                label: service.name,
+              }))}
+              error={fieldErrors.service}
+              onChange={(value) => onChange("service", value)}
+            />
+            <SelectField
+              label="Ministry"
+              name="ministry"
+              value={form.ministry}
+              disabled={isEditing || ministries.length === 0}
+              placeholder="Choose a ministry"
+              options={ministries.map((ministry) => ({
+                value: ministry,
+                label: ministry,
+              }))}
+              error={fieldErrors.ministry}
+              onChange={(value) => onChange("ministry", value)}
+            />
           </div>
-          {(form.airedDates ?? []).map((date, index) => (
-            <div className="aired-date-row" key={`aired-${index}`}>
-              <label className="sr-only" htmlFor={`aired-date-${index}`}>
-                Aired date {index + 1}
-              </label>
-              <input
-                id={`aired-date-${index}`}
-                type="date"
-                max={todayIsoDate()}
+          <Field
+            label="Request title"
+            controlId="title"
+            required
+            error={fieldErrors.title}
+          >
+            <input
+              className="portal-input"
+              id="title"
+              name="title"
+              required
+              maxLength={120}
+              value={form.title}
+              aria-invalid={fieldErrors.title ? "true" : undefined}
+              aria-describedby={fieldDescribedBy("title", fieldErrors.title)}
+              onChange={(event) => onChange("title", event.target.value)}
+              placeholder="e.g. Youth retreat recap video"
+            />
+          </Field>
+        </div>
+      )}
+
+      {(isEditing || step === 1) && (
+        <div className="form-section request-details-section">
+          {isEditing && (
+            <div className="form-section-heading">
+              <FileText size={16} aria-hidden="true" />
+              <h3>Request details</h3>
+            </div>
+          )}
+          <div className="form-row details-fields">
+            <Field
+              label="Detailed instructions"
+              controlId="instructions"
+              required
+              error={fieldErrors.instructions}
+            >
+              <textarea
+                className="portal-input"
+                id="instructions"
+                name="instructions"
                 required
-                value={date}
-                onChange={(event) => {
-                  const dates = [...(form.airedDates ?? [])];
-                  dates[index] = event.target.value;
-                  onChange("airedDates", dates);
-                }}
+                rows={4}
+                value={form.instructions}
+                aria-invalid={fieldErrors.instructions ? "true" : undefined}
+                aria-describedby={fieldDescribedBy(
+                  "instructions",
+                  fieldErrors.instructions,
+                )}
+                onChange={(event) =>
+                  onChange("instructions", event.target.value)
+                }
+                placeholder="Describe what you need…"
               />
+            </Field>
+            <Field
+              label="Additional notes"
+              controlId="notes"
+              required
+              error={fieldErrors.notes}
+            >
+              <textarea
+                className="portal-input"
+                id="notes"
+                name="notes"
+                required
+                rows={3}
+                value={form.notes}
+                aria-invalid={fieldErrors.notes ? "true" : undefined}
+                aria-describedby={fieldDescribedBy("notes", fieldErrors.notes)}
+                onChange={(event) => onChange("notes", event.target.value)}
+                placeholder="Anything else we should know?"
+              />
+            </Field>
+          </div>
+          {selectedService?.requiresAiredDates && (
+            <fieldset
+              className="aired-dates-block"
+              data-invalid={fieldErrors.airedDates ? "true" : undefined}
+              aria-invalid={fieldErrors.airedDates ? "true" : undefined}
+              aria-describedby={
+                fieldErrors.airedDates
+                  ? fieldMessageId("aired-dates", "error")
+                  : fieldMessageId("aired-dates", "hint")
+              }
+            >
+              <legend className="aired-heading">
+                <div>
+                  <strong>Exact aired dates</strong>
+                  <span id={fieldMessageId("aired-dates", "hint")}>
+                    Needed to find a previously aired video.
+                  </span>
+                </div>
+                <span className="required-pill">REQUIRED</span>
+              </legend>
+              {(form.airedDates ?? []).map((date, index) => (
+                <div className="aired-date-row" key={`aired-${index}`}>
+                  <label className="sr-only" htmlFor={`aired-date-${index}`}>
+                    Aired date {index + 1}
+                  </label>
+                  <input
+                    id={`aired-date-${index}`}
+                    type="date"
+                    name="airedDates"
+                    max={todayIsoDate()}
+                    required
+                    value={date}
+                    aria-invalid={fieldErrors.airedDates ? "true" : undefined}
+                    aria-describedby={
+                      fieldErrors.airedDates
+                        ? fieldMessageId("aired-dates", "error")
+                        : fieldMessageId("aired-dates", "hint")
+                    }
+                    onChange={(event) => {
+                      const dates = [...(form.airedDates ?? [])];
+                      dates[index] = event.target.value;
+                      onChange("airedDates", dates);
+                    }}
+                  />
+                  <button
+                    className="remove-date"
+                    type="button"
+                    aria-label={`Remove aired date ${index + 1}`}
+                    onClick={() =>
+                      onChange(
+                        "airedDates",
+                        (form.airedDates ?? []).filter((_, i) => i !== index),
+                      )
+                    }
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              ))}
               <button
-                className="remove-date"
+                className="add-date"
+                id="add-aired-date"
                 type="button"
-                aria-label={`Remove aired date ${index + 1}`}
+                aria-describedby={
+                  fieldErrors.airedDates
+                    ? fieldMessageId("aired-dates", "error")
+                    : fieldMessageId("aired-dates", "hint")
+                }
                 onClick={() =>
-                  onChange(
-                    "airedDates",
-                    (form.airedDates ?? []).filter((_, i) => i !== index),
-                  )
+                  onChange("airedDates", [...(form.airedDates ?? []), ""])
                 }
               >
-                <X size={16} />
+                <Plus size={15} /> Add exact date
               </button>
+              {fieldErrors.airedDates && (
+                <span
+                  className="portal-field-error"
+                  id={fieldMessageId("aired-dates", "error")}
+                  role="alert"
+                >
+                  <CircleAlert size={14} aria-hidden="true" />
+                  {fieldErrors.airedDates}
+                </span>
+              )}
+            </fieldset>
+          )}
+        </div>
+      )}
+
+      {(isEditing || step === 1) && (
+        <div className="form-section request-timing">
+          {isEditing && (
+            <div className="form-section-heading">
+              <CalendarClock size={16} aria-hidden="true" />
+              <h3>When you need it</h3>
             </div>
-          ))}
-          <button
-            className="add-date"
-            type="button"
-            onClick={() =>
-              onChange("airedDates", [...(form.airedDates ?? []), ""])
-            }
-          >
-            <Plus size={15} /> Add exact date
-          </button>
-        </div>
-      )}
-      <Field label="Completion date and time" required>
-        <span className="datetime-wrap">
-          <input
-            className="portal-input"
-            type="datetime-local"
+          )}
+          <Field
+            label="Completion date and time"
+            controlId="dueAt"
             required
-            value={form.dueAt}
-            onChange={(event) => onChange("dueAt", event.target.value)}
-          />
-          <Clock3 size={17} aria-hidden="true" />
-        </span>
-      </Field>
-      {shortNotice && (
-        <div className="short-notice" role="status">
-          <Clock3 size={17} />
-          <span>
-            <strong>Short notice</strong> This is due within 24 hours. We’ll
-            confirm what’s possible.
-          </span>
+            error={fieldErrors.dueAt}
+          >
+            <span className="datetime-wrap">
+              <input
+                className="portal-input"
+                id="dueAt"
+                name="dueAt"
+                type="datetime-local"
+                required
+                value={form.dueAt}
+                aria-invalid={fieldErrors.dueAt ? "true" : undefined}
+                aria-describedby={fieldDescribedBy("dueAt", fieldErrors.dueAt)}
+                onChange={(event) => onChange("dueAt", event.target.value)}
+              />
+              <Clock3 size={17} aria-hidden="true" />
+            </span>
+          </Field>
+          {shortNotice && (
+            <div className="short-notice" role="status">
+              <Clock3 size={17} />
+              <span>
+                <strong>Short notice</strong> This is due within 24 hours. We’ll
+                confirm what’s possible.
+              </span>
+            </div>
+          )}
         </div>
       )}
-      <p className="file-share-note">
-        Have files? Share them in your ministry’s Telegram group.
-      </p>
+
+      {!isEditing && step === 2 && (
+        <section className="request-review" aria-label="Request review">
+          <dl className="review-list">
+            <div>
+              <dt>Ministry</dt>
+              <dd>{form.ministry}</dd>
+            </div>
+            <div>
+              <dt>Request type</dt>
+              <dd>{selectedService?.name ?? form.service}</dd>
+            </div>
+            <div>
+              <dt>Request title</dt>
+              <dd>{form.title}</dd>
+            </div>
+            <div>
+              <dt>Detailed instructions</dt>
+              <dd>{form.instructions}</dd>
+            </div>
+            <div>
+              <dt>Additional notes</dt>
+              <dd>{form.notes}</dd>
+            </div>
+            {!!form.airedDates?.filter(Boolean).length && (
+              <div>
+                <dt>Exact aired dates</dt>
+                <dd>{form.airedDates.filter(Boolean).join(", ")}</dd>
+              </div>
+            )}
+            <div>
+              <dt>Completion date and time</dt>
+              <dd>{prettyDate(form.dueAt)}</dd>
+            </div>
+          </dl>
+        </section>
+      )}
+
+      {isEditing && (
+        <p className="file-share-note">
+          Have files? Share them in your ministry’s Telegram group.
+        </p>
+      )}
       <div className="form-footer">
-        <span>
-          <b aria-hidden="true">*</b> Required fields
-        </span>
+        {(isEditing || step === 1) && (
+          <span>
+            <b aria-hidden="true">*</b> Required fields
+          </span>
+        )}
         <div className="form-actions">
           {isEditing && (
             <button
-              className="button button-secondary"
+              className="button button-secondary button-lg"
               type="button"
               onClick={onCancel}
               disabled={busy}
@@ -814,11 +1369,19 @@ function RequestForm({
             </button>
           )}
           <button
-            className="button button-primary"
+            className="button button-primary button-lg"
             type="submit"
-            disabled={busy}
+            disabled={busy || (!isEditing && !canSubmit)}
           >
-            {busy ? "Saving…" : isEditing ? "Save changes" : "Send request"}
+            {busy
+              ? isEditing
+                ? "Saving…"
+                : "Sending…"
+              : isEditing
+                ? "Save changes"
+                : step === 2
+                  ? "Send request"
+                  : "Next"}
             {!busy && <ArrowRight size={17} />}
           </button>
         </div>
@@ -827,31 +1390,64 @@ function RequestForm({
   );
 }
 
-function TrackingSummary({ result }: { result: PublicTracking }) {
+function serviceLabel(id: string, services: Service[]) {
+  return (
+    services.find((service) => service.id === id)?.name ??
+    id.replaceAll("-", " ")
+  );
+}
+
+function departmentLabel(id: string, departments: Catalog["departments"]) {
+  return (
+    departments.find((department) => department.id === id)?.name ??
+    id.replaceAll("-", " ")
+  );
+}
+
+function TrackingSummary({
+  result,
+  services,
+  departments,
+}: {
+  result: PublicTracking;
+  services: Service[];
+  departments: Catalog["departments"];
+}) {
   const { request, task } = result;
   const pending = request.status === "pending";
+  const rejected = request.status === "rejected";
   const approved = request.status === "approved";
+  const taskCompleted = task?.status === "completed";
   const progress = task?.progress ?? 0;
-  const department =
-    task && DEPARTMENTS.find((item) => item.id === task.department)?.name;
+  const department = task ? departmentLabel(task.department, departments) : "";
+
+  let statusClass = "status-pending";
+  let statusLabel = "Awaiting review";
+  if (rejected) {
+    statusClass = "status-rejected";
+    statusLabel = "Not approved";
+  } else if (approved && taskCompleted) {
+    statusClass = "status-completed";
+    statusLabel = "Completed";
+  } else if (approved && task?.status === "in-progress") {
+    statusClass = "status-approved";
+    statusLabel = "In progress";
+  } else if (approved) {
+    statusClass = "status-approved";
+    statusLabel = "Approved";
+  }
+
   return (
     <section className="tracking-summary">
       <div className="tracking-summary-top">
         <div>
           <h3>{request.title}</h3>
         </div>
-        <span
-          className={`status-badge ${pending ? "status-pending" : approved ? "status-approved" : "status-rejected"}`}
-        >
-          {pending ? "Awaiting review" : approved ? "Approved" : "Not approved"}
-        </span>
+        <span className={`status-badge ${statusClass}`}>{statusLabel}</span>
       </div>
       <div className="tracking-meta">
         <span>{request.ministry}</span>
-        <span>
-          {SERVICES.find((service) => service.id === request.service)?.name ??
-            request.service.replaceAll("-", " ")}
-        </span>
+        <span>{serviceLabel(request.service, services)}</span>
         <span>Due {prettyDate(request.dueAt)}</span>
       </div>
       {request.status === "rejected" ? (
@@ -882,6 +1478,7 @@ function TrackingSummary({ result }: { result: PublicTracking }) {
           </div>
           <div
             className="progress-track"
+            data-complete={taskCompleted ? "true" : undefined}
             role="progressbar"
             aria-valuenow={progress}
             aria-valuemin={0}
@@ -909,7 +1506,13 @@ function TrackingSummary({ result }: { result: PublicTracking }) {
   );
 }
 
-function RequestDetails({ request }: { request: PublicRequest }) {
+function RequestDetails({
+  request,
+  services,
+}: {
+  request: PublicRequest;
+  services: Service[];
+}) {
   return (
     <dl className="request-details">
       <div>
@@ -917,11 +1520,8 @@ function RequestDetails({ request }: { request: PublicRequest }) {
         <dd>{request.ministry}</dd>
       </div>
       <div>
-        <dt>Service</dt>
-        <dd>
-          {SERVICES.find((service) => service.id === request.service)?.name ??
-            request.service.replaceAll("-", " ")}
-        </dd>
+        <dt>Request type</dt>
+        <dd>{serviceLabel(request.service, services)}</dd>
       </div>
       <div>
         <dt>Completion due</dt>

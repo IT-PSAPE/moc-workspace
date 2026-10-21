@@ -31,9 +31,9 @@ The API defaults to an on-disk JSON repository. `DEMO_MODE=true` in `apps/api/.e
 | `packages/client` | HTTP client and TanStack Query hooks; no database credentials                                             |
 | `packages/ui`     | Shared Base UI primitives, self-hosted fonts and theme tokens                                             |
 
-Both frontends use TypeScript, React, Tailwind CSS and Base UI. The workspace uses TanStack Router; both applications use TanStack Query. The design keeps the dashboard hierarchy from the supplied reference, with a bright pink brand and self-hosted Inter typography and a compact spacing scale informed by Untitled UI. See [DESIGN.md](docs/DESIGN.md) for the design rationale.
+Both frontends use TypeScript, React, Tailwind CSS and Base UI. The workspace uses TanStack Router; both applications use TanStack Query. The frontend follows current moc-console patterns for its compact icon rail, contextual navigation, public request flow, and self-hosted DM Sans and Geist Mono typography. Shared tokens and primitives live in `packages/ui`, alongside application-specific styles. See [DESIGN.md](docs/DESIGN.md) for the design rationale.
 
-Cell 0 can manage every department and private Cell 0 work, approve/reject requests, create internal tasks, review monthly reports and manage leader access. Department leaders can view the three production departments and edit their own. Notes are private to Cell 0 and the owning department; public tracking never includes them. Department calendars show their own deadlines; Cell 0 sees all. Workers do not have accounts.
+Current approved members sign in with a verified invited email. Member access and leadership are separate: approved members retain the task permissions for their department, current leaders manage request options, and Cell 0 leaders manage members, departments, and request review. Cell 0 also manages its private work, internal tasks, and monthly reports. Team notes are private to Cell 0 and the owning department; public tracking never includes them. Department calendars show members their own deadlines, while Cell 0 sees all. See [MANAGED-REQUESTS.md](docs/MANAGED-REQUESTS.md) for the persisted membership and authorization contract.
 
 ## Verification
 
@@ -41,9 +41,12 @@ Cell 0 can manage every department and private Cell 0 work, approve/reject reque
 npm run typecheck
 npm test
 npm run build
+npm run check:contrast   # checks named token contrast pairings
+npm run shots            # screenshot states at four viewports using isolated demo data
+npm run verify:ui        # real request/edit/approval/completion/tracking browser flow
 ```
 
-Tests cover request validation, service routing, reference generation, protected fields, permissions, notes, completion/reopening, notification routing and the HTTP API. Browser verification covers public submission with short notice, pending edits, approval routing and public completion tracking, plus phone layouts.
+The review record lists the current test totals and rendered-state coverage. Browser checks use an isolated API store and cover request submission, editing, approval/routing, completion, tracking, and responsive layouts.
 
 ## Integration status
 

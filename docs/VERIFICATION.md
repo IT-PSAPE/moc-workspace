@@ -1,32 +1,66 @@
-# Verification — 13 October 2026
+# UI review and verification record
 
-Factory coordination and Luna agents implemented the monorepo and the pink design revision. An independent Luna review inspected the public tracking credential, permission projections, limiter and portal draft binding. Its forwarded-header limiter finding was fixed and accepted on recheck.
+This record summarizes the Round 3 review checkpoint documented in
+[UI-REVIEW.md](UI-REVIEW.md). Its source identity and results describe that
+checkpoint; later changes require focused revalidation. Round 1 and Round 2
+results are historical and do not establish acceptance of the Round 3
+candidate.
 
-## Automated checks
+## Final R3 checkpoint
 
-- Monorepo TypeScript checks passed.
-- 21 tests passed: 14 domain tests and seven HTTP API tests.
-- API, portal and workspace release builds passed.
-- The original bundled API smoke test returned a successful health response on a temporary port; the process was stopped afterward.
+The recorded source snapshot is
+`89bd9fc78b721d24ad38cdb28235e0f07b322027eedfd33d602f2d97ea063648` (85
+product source files). The finite representative state matrix passed 38/38
+cases and 221 assertions across 11 isolated groups. The refreshed visual gallery
+contains 196 captures at 1440px, 834px, 390px, and 320px.
 
-Tests exercise validation, exact aired dates, routing, rejection reasons, private notes, cross-department mutation denial, revoked access, completion transitions and malicious metadata. Added tests cover random tracking codes, normalized lookup, removed reference/ministry lookup, secret-hash stripping, closed-request edit denial, spoofed forwarding headers, rate limits and bounded limiter eviction. The repository serializes mutations and writes atomic snapshots.
+The checkpoint also records 36 passing unit/API/migration tests, 25 passing
+named contrast pairings, workspace-wide typecheck, and production builds. The
+request/task lifecycle and UI refinement browser checks passed. Browser writes
+used disposable API stores; the live demo store retained its four requests and
+25 tasks. No confirmed product finding remained open in the inspected matrix.
 
-## Browser checks
+Screenshots, manifests, coverage output, and detailed review reports are kept
+in ignored local `output/reviews/` directories. They are worktree evidence and
+are not included in Git. The review document records the matrix, report links,
+and scoped limitations for that checkpoint.
 
-The revised portal accepted an account-free demo request due within 24 hours and showed its short-notice warning. Submission issued a 31-character random tracking code. The receipt opened tracked details with the pending edit form already available; changed notes saved and were present on a later lookup. Making another request returned a blank creation form. Changing the code cleared the old details, and an invalid code displayed a missing-request message.
+## Scope and limits
 
-Cell 0 received the revised request with its saved notes, approved it and routed it to Design / Graphic Design. Attempting a save from the stale pending public view refreshed the approved record and removed editing. The original full-flow browser check also verified 100% completion and public progress.
+The public request flow has two steps: a complete form followed by
+review/confirmation. Returning to the form preserves the draft; successful
+submission leads to the receipt. Verification also covered managed services,
+ministries, departments/groups, and members as described in
+[MANAGED-REQUESTS.md](MANAGED-REQUESTS.md).
 
-Desktop dashboard, department board, request dialog and portal were visually inspected. Phone dashboard and public portal were inspected at 390 pixels without document-level horizontal overflow. Portal controls were confirmed at 16px and approximately 48px tall. The responsive tab highlight defect found during resize was fixed by placing its pink background directly on the active tab. Department board titles are 15px, metadata and table rows 14px, labels 14px and controls 16px. Other workspace states received source and type checks; every phone-state combination was not browser-tested.
+The representative matrix covered responsive shell and route families, data
+density, relevant roles and privacy boundaries, management flows, shared
+controls and overlays, public submission/tracking, and existing request,
+board, schedule, dashboard, and reporting workflows. It is finite coverage,
+not every possible combination of viewport, role, fixture, and overlay.
 
-## Integration limits
+Google's external OAuth provider, native operating-system date-picker internals,
+and live screen-reader announcement quality were outside the isolated browser
+contract and remain unverified. See [UI-REVIEW.md](UI-REVIEW.md) for the source
+identity, acceptance matrix, checkpoints, and explicit coverage gaps.
 
-Google OAuth and Telegram credentials are absent, so external sign-in and actual bot delivery were not exercised. Neon is not connected; persistence uses the local JSON repository and process-memory sessions. Production startup intentionally fails until durable repository/session adapters are added. No live deployment, database provisioning or external messages were performed.
+## Re-running local checks
 
-## Untitled UI refinement
+With the workspace and portal dev servers running, these commands use the
+browser harnesses and isolated API setup:
 
-The next pass adopted Inter and the public component reference scale, removed visible demo/live labels and redundant rank summaries, tightened quote/header/card/form spacing, simplified Settings and aligned its access table. An independent Luna source review found a remaining 13px form rule; both that rule and the textarea override were corrected, and browser-computed form sizes confirmed 16px.
+```sh
+npm run typecheck
+npm test
+npm run build
+npm run check:contrast
+npm run verify:ui
+npm run shots
+node scripts/check-ui-refinements.mjs
+node scripts/check-ui-state-coverage.mjs
+```
 
-Desktop visual checks covered the dashboard, department overview, board, internal-task dialog, Settings access table and add-leader form, request inbox and rejection dialog, calendar month navigation/day expansion, reports and portal. Phone checks at 390px covered the dashboard, department cards/board, internal-task dialog, Settings table, reports/menu, calendar agenda/empty month and both public portal tabs. Browser checks found and fixed hidden-header overflow in two tables. All inspected phone pages then had no document-level horizontal overflow; table scrolling remained within each card. The calendar's former static more label now expands hidden deadlines, and its phone agenda exposes task titles and responds to month selection. Public code lookup continued to show approved read-only details.
-
-Final automated checks use the same monorepo typecheck, 21-test suite and three-app build commands. External integrations remain unconfigured as described above.
+The `shots` gallery is written to ignored `.shots/`; the state-coverage and
+review outputs are written under ignored `output/`. These commands can produce
+new evidence for the current checkout, but do not by themselves update the
+historical checkpoint results above.

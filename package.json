@@ -17,7 +17,8 @@
     "db:migrate": "tsx scripts/neon-db.ts",
     "verify:neon": "tsx scripts/check-neon.ts",
     "verify:quotes": "tsx scripts/check-banner-quotes.ts",
-    "deploy:neon": "neon deploy --update-existing --env .env.local"
+    "deploy:neon": "neon deploy --update-existing --env .env.local",
+    "vercel:env": "node scripts/configure-vercel-env.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

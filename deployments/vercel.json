@@ -1,0 +1,20 @@
+{
+  "scope": "psape1",
+  "projects": {
+    "workspace": {
+      "name": "moc-workspace",
+      "rootDirectory": "apps/workspace",
+      "url": "https://moc-workspace.vercel.app"
+    },
+    "portal": {
+      "name": "moc-workspace-portal",
+      "rootDirectory": "apps/portal",
+      "url": "https://moc-workspace-portal.vercel.app"
+    },
+    "api": {
+      "name": "moc-workspace-api",
+      "rootDirectory": "apps/api",
+      "url": "https://moc-workspace-api.vercel.app"
+    }
+  }
+}

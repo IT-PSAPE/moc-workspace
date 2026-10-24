@@ -106,3 +106,118 @@ historical checkpoint results above.
 
 When bundled Chromium is unavailable, set `PLAYWRIGHT_CHANNEL=chrome` for
 the local harnesses to use the installed Google Chrome browser.
+
+## Neon production branch verification (2026-10-24)
+
+Target: `green-waterfall-60958039`, branch `production`
+(`br-noisy-rain-b9aix0sd`, Frankfurt). Postgres, Auth, Object Storage, Functions
+and Realtime are provisioned. The previously selected project is unchanged.
+
+Commands passed:
+
+- `npm run build` — API and both frontends build; existing large-chunk warning.
+- `npm run typecheck` — all workspace packages pass.
+- `npm test` — 93 tests across six files pass.
+- `npm audit` — zero vulnerabilities.
+- `npm run verify:neon -- --browser` — real database concurrency/rollback;
+  managed identity signup/signin/session/JWT/permissions; private report upload
+  and exact signed download; deployed submission/approval/start/completion/
+  tracking; Realtime snapshots, changes and membership revocation; real browser
+  SDK sign-in, reload, protected Reports, automatic table refresh after an
+  external database write, Export CSV, and sign-out. Temporary
+  fixtures are cleaned while preserving the approved administrator.
+
+The in-app browser additionally exercised the actual Google account picker for
+`psape.dev@gmail.com`, returned to Overview, restored the session after reload,
+signed out to the login page, and signed in again. The browser test exposed and
+resolved an SDK token-shape mismatch. Deployment testing exposed and resolved
+a missing Realtime sealing secret; deployment now maps it to a server-only
+Function variable.
+
+Evidence: `output/reviews/neon-setup/verification.log`,
+`output/playwright/neon/google-signin-success.png`, and
+`output/playwright/neon/reports.png`. All are ignored local verification artifacts.
+
+## Banner quotes (2026-10-24)
+
+- `npm test` — 104 tests across eight files, including daily selection, calendar
+  boundaries, override/reset, snapshots, empty libraries, validation, permissions,
+  persistence and concurrent reads.
+- `npm run typecheck` and `npm run build` pass. Existing dependency annotation
+  and frontend bundle-size warnings remain.
+- `npm run verify:quotes` exercises the actual Neon Postgres adapter in a uniquely
+  named temporary workspace. Eight concurrent reads from two API instances
+  create one shared daily pick. It verifies persistence, override/reset, midnight
+  rollover, bulk deletion and empty-library behavior, then removes the fixture.
+- The browser journey used an isolated JSON API and development frontend:
+  create quote, edit on blur, Escape cancellation, searchable daily override,
+  matching Overview banner, reload persistence, restore daily pick, selection
+  and delete-confirmation cancellation. The real signed-in workspace also shows
+  the Banner quotes settings section and the original quote.
+
+The UI test API launcher explicitly clears `DATABASE_URL` so a root Neon env file
+cannot redirect throwaway browser fixtures into the production workspace.
+
+The member invitation form now uses the shared dialog. Browser checks confirm
+initial focus on Full name, duplicate-email errors and Retry inside the dialog,
+preserved field values after failure, and Escape dismissal restoring focus to
+Invite member. No member was added during this dialog check.
+
+`npm run verify:neon` also passes against the updated deployed Function, including
+authenticated quote creation/editing/deletion with today's snapshot unchanged.
+The generated verification records are cleaned up.
+
+## Workspace sign-in redesign (2026-10-24)
+
+The sign-in screen uses a responsive two-panel layout, the existing MOC mark,
+shared typography/color tokens and button primitives. Loading, access approval,
+Google sign-in, local demo access and connection failures share the layout.
+Unused styles from the former centered access card were removed.
+
+- `npm run build`, workspace type checking and all 104 existing tests pass.
+- Browser checks at desktop, 390px and 320px verify readable layouts and no
+  horizontal overflow. Temporary browser viewport overrides were reset.
+- Keyboard navigation reaches Continue with Google. The real Google account
+  picker accepted the approved administrator and returned to the workspace.
+- An isolated frontend/API exercised loading, connection errors below the
+  action area, and Retry. No production service was interrupted.
+
+Screenshots: `output/playwright/login-redesign/desktop.png`, `mobile.png`,
+`small-mobile.png` and `connection-error.png` (ignored local artifacts).
+
+## Three Vercel projects (2026-10-24)
+
+Production URLs: https://moc-workspace.vercel.app,
+https://moc-workspace-portal.vercel.app and
+https://moc-workspace-api.vercel.app. All three are Ready in the PSAPE team;
+anonymous frontend/deep-link requests and API health return HTTP 200. Private
+API routes return 401 without an approved, verified managed identity.
+
+- `npm run typecheck`, `npm test` (104 tests across eight files), and
+  `npm run build` pass. `npm audit` reports zero vulnerabilities.
+- Vercel's API entrypoint bundles the TypeScript runtime and shared domain code
+  before tracing, resolving an initial Node ESM extensionless-import failure.
+  The native Hono deployment builds and serves the same production API.
+- `VERIFY_API_URL=https://moc-workspace-api.vercel.app` with the production
+  workspace origin and allowed-origin list passes `npm run verify:neon`:
+  Postgres persistence/concurrency/rollback; real managed signup/signin/session/
+  JWT/permissions; private report uploads and exact signed downloads; production
+  API authorization/CORS; quote edits and persistence; public submission through
+  approval, start, completion and tracking; deployed API sealed Realtime queries,
+  live revisions and membership revocation; signout and exact fixture cleanup.
+- In the in-app browser, real Google sign-in for the approved administrator
+  returns to the production Overview and survives reload. The visible Overview
+  updates automatically after verification records are cleaned up, confirming
+  browser Realtime works from the production origin. The portal request form
+  shows live managed request types and ministries from the Vercel API.
+- Read-back of environment metadata confirms 14 Config variables across the
+  projects and four API-only Secrets. Frontends hold no credentials. Source
+  uploads exclude local env files, service metadata and generated artifacts.
+- The owner requested that `IT-PSAPE/moc-workspace` become public. Visibility was
+  changed after checking tracked history for common credential patterns. This
+  resolved Vercel's initial commit-author access block without changing Git
+  authorship or account permissions.
+
+Evidence: `output/reviews/vercel-deploy/` and
+`output/playwright/vercel/` (ignored local artifacts). See `docs/VERCEL.md` for
+repeatable deployment and environment configuration commands.

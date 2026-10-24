@@ -1,6 +1,6 @@
 # MOC Workspace
 
-A three-application monorepo for Ministry of Culture work. The workspace and public portal are separate Vite React applications. A TypeScript API owns all authentication, authorization, business actions and storage. Neither frontend connects to a database or Google directly.
+A three-application monorepo for Ministry of Culture work. The workspace and public portal are separate Vite React applications. A TypeScript API owns all authentication, authorization, business actions and storage. Neither frontend receives database or storage credentials. Managed identity is handled by Neon Auth.
 
 ## Run locally
 
@@ -18,7 +18,7 @@ npm run dev
 - Public portal: http://localhost:5174
 - API health: http://localhost:3001/health
 
-The API defaults to an on-disk JSON repository. `DEMO_MODE=true` in `apps/api/.env` enables sample leader sessions. The workspace opens as Cell 0 in local development mode. Department permissions are exercised in the API tests. Demo changes persist under `apps/api/data/`, which is ignored by Git. Files and deliverables remain on Telegram; the app has no upload or media-storage capability.
+With a root `DATABASE_URL`, the API uses Neon Postgres and managed authentication. See [Neon setup](docs/NEON.md). Without Neon configuration, the API uses an on-disk JSON repository. `DEMO_MODE=true` in `apps/api/.env` enables sample leader sessions. The workspace opens as Cell 0 in local development mode. Department permissions are exercised in the API tests. Demo changes persist under `apps/api/data/`, which is ignored by Git. Deliverable media remains on Telegram; generated report CSVs use private Neon Object Storage.
 
 ## Stack and boundaries
 
@@ -26,7 +26,7 @@ The API defaults to an on-disk JSON repository. `DEMO_MODE=true` in `apps/api/.e
 | ----------------- | --------------------------------------------------------------------------------------------------------- |
 | `apps/workspace`  | Leader dashboard, departments, boards, inbox, calendar, reports and access management                     |
 | `apps/portal`     | Account-free request submission, secure-code tracking and edits while awaiting review                                   |
-| `apps/api`        | Hono API, Google OAuth, opaque cookie sessions, permission checks, persistence and Telegram notifications |
+| `apps/api`        | Hono API, Neon Auth verification, permission checks, Postgres, private report exports and Telegram notifications |
 | `packages/shared` | TypeScript contracts, service routing, validated domain actions and demo fixtures                         |
 | `packages/client` | HTTP client and TanStack Query hooks; no database credentials                                             |
 | `packages/ui`     | Shared Base UI primitives, self-hosted fonts and theme tokens                                             |
@@ -50,14 +50,27 @@ The review record lists the current test totals and rendered-state coverage. Bro
 
 ## Integration status
 
-Neon is **not connected**. The local repository implements an interface for a future Neon adapter. Production startup deliberately fails until durable database and session storage are implemented; this is a working local demo, not a deployed production service.
+The apps have separate Vercel projects. See [Vercel deployment](docs/VERCEL.md)
+for URLs, deployment commands, readable Config versus Secret variables, and the
+production verification results.
 
-Google OAuth and Telegram delivery code are included but require API-side credentials. Google sign-in admits only approved, verified email addresses. Telegram recipients are configured per department. Notification failures are logged after data commits and do not undo saved work; a durable delivery queue remains a production follow-up. Current opaque sessions live in API memory and expire after eight hours; restarting the API signs out live sessions.
+Neon Postgres, Auth, Object Storage, Functions, and Realtime are connected. `neon.ts`
+deploys the existing Hono API as a Function. `npm run db:migrate` initializes the
+tracked schema; `npm run verify:neon` exercises the live services with temporary
+fixtures. See [NEON.md](docs/NEON.md) for credentials, admin bootstrap, deployment,
+verification, and the aggregate storage tradeoff.
 
-Configuration is documented in [API.md](docs/API.md) and [AUTH.md](docs/AUTH.md). The next Neon stage is documented in [NEON.md](docs/NEON.md). Configure each frontend's `VITE_API_URL` to the API origin. Vite variables are public; never place database, Google client-secret or bot credentials there.
+Google sign-in uses Neon Auth and admits only verified, approved member emails.
+The public portal remains account free. Telegram delivery still requires your
+API-side bot credentials; failures are logged after data commits. A durable
+notification outbox remains a follow-up.
 
 ## App configuration
 
-Each application has its own `.env.example`. API secrets belong only in `apps/api/.env`; the two Vite apps receive public API origins. Vite embeds `VITE_*` variables at build time, so set them before building each frontend for its eventual host. The API reads its environment at runtime and honours the host-provided `PORT` (including Heroku). The root example is an API convenience template. Neon credentials will be added only to the API when its adapter is implemented. No deployment is configured or performed yet.
+The root ignored `.env.local` holds Neon-managed variables from `neon env pull`.
+Both Vite apps read root env and expose only public `VITE_API_URL`,
+`VITE_PORTAL_URL`, `VITE_NEON_AUTH_URL`, and `VITE_NEON_REALTIME_URL` aliases. The API reads its environment
+at runtime and honors host-provided `PORT`. Legacy local JSON/Google OAuth
+configuration remains available for standalone demo mode.
 
 Public submission issues a reference for leaders and a separate random tracking code for the requester. Keep that code private: it unlocks request details and edits while awaiting review. The API stores only its hash; it cannot recover a lost code. Codes stay out of URLs and browser storage. Existing demo records created before this change do not gain a public tracking credential.

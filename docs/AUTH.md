@@ -1,5 +1,20 @@
 # API authentication
 
+## Active Neon configuration
+
+Neon Auth owns managed identity and durable browser sessions. The workspace uses
+its SDK for Google sign-in and attaches a bearer JWT to protected API calls. The
+API verifies branch JWKS/issuer/expiry, looks up the subject’s verified email in
+`neon_auth.user`, and rechecks approved workspace membership. Signup grants no
+access by itself. Managed sign-out and workspace access revocation are separate:
+an issued JWT can remain valid until expiry, while a removed membership is
+denied immediately. See [NEON.md](NEON.md).
+
+The remaining sections describe the standalone local adapter, used only without
+Neon configuration. Its process-memory cookies are not used by the deployed API.
+
+## Legacy local adapter
+
 Authentication is owned by `apps/api`. The workspace and public portal do not receive Google credentials, database credentials, or a role claim that they can choose themselves. The API loads the approved leader record and issues an opaque, random session cookie.
 
 ## Google sign-in

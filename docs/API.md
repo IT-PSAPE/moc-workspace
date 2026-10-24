@@ -17,7 +17,8 @@ an `update-task` payload containing `progress` is rejected.
 | `GET`   | `/health`                   | No                     | `{ "status": "ok" }`                                                                                                                                                |
 | `GET`   | `/api/session`              | No                     | Current `Session`; with no user, `demo` indicates whether seeded demo sign-in is enabled                                                                            |
 | `GET`   | `/api/catalog`              | No                     | `{ ministries, disabledMinistries, services, departments }`                                                                                                                                          |
-| `GET`   | `/api/integrations`         | Approved Cell 0 leader | `{ telegramConfigured, googleConfigured, storage: "local-demo" }`; Telegram is configured when the bot token and all four chat IDs exist; never returns credentials |
+| `GET`   | `/api/integrations`         | Approved Cell 0 leader | `{ telegramConfigured, googleConfigured, storage: "local-demo" | "neon-postgres" }`; Telegram is configured when the bot token and all four chat IDs exist; never returns credentials |
+| `POST`  | `/api/reports/export`       | Approved Cell 0 leader | `{month,csv}` -> private stored report and 60-second signed download |
 | `GET`   | `/api/workspace`            | Approved member        | Workspace state filtered by role                                                                                                                                    |
 | `POST`  | `/api/auth/demo`            | No                     | Explicit demo sign-in; development only                                                                                                                             |
 | `POST`  | `/api/auth/logout`          | No                     | Clears the session cookie                                                                                                                                           |
@@ -28,7 +29,7 @@ an `update-task` payload containing `progress` is rejected.
 | `POST`  | `/api/track`                | No                     | `{ code }` to get a public tracking projection                                                                                                                      |
 | `PATCH` | `/api/requests`             | No                     | `{ code, input: RequestInput }`; edits backlog requests only                                                                                                        |
 
-Errors use `{ "error": "..." }`. Browser calls that change requests or workspace data must include an `Origin` from the configured development origins. JSON request bodies are limited to 64 KiB. Cookie sessions use `credentials: include` from either frontend. Request tracking and request edits are public; both require the random tracking code, and edits are accepted only while in backlog. References and ministry names cannot unlock a request.
+Errors use `{ "error": "..." }`. Browser calls that change requests or workspace data must include an `Origin` from the configured development origins. JSON request bodies are limited to 64 KiB. Protected Neon calls carry `Authorization: Bearer <JWT>`; legacy local cookie sessions use `credentials: include`. Request tracking and request edits are public; both require the random tracking code, and edits are accepted only while in backlog. References and ministry names cannot unlock a request.
 
 Only approved Cell 0 members receive the Requests collection. Other departments receive `requests: []`; their task briefs retain safe delivery instructions, including original aired dates. Private Cell 0 tasks, other departments’ private notes, users, and activities are withheld. Leaders can read and add private notes on tasks in their own department and can change tasks only in their own department. Cell 0 leaders have the complete workspace view; Cell 0 members can read the request inbox, but review and request-comment mutations require leadership. Public tracking returns a safe request projection with its display reference and form fields, plus a linked-task projection containing status, department, subteam and recorded lifecycle dates. It omits private notes, the bearer-code hash and task percentage progress. Requests use backlog, approved and rejected. Tasks use pending, in-progress and completed status values. A rejected request may be approved later; approval creates exactly one pending task and never resets the request to backlog.
 
@@ -42,7 +43,7 @@ Google OAuth requires `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and a callback
 
 ## Production status
 
-Production startup currently fails closed. Neon has not been provisioned, and this API has no durable production repository yet. Do not deploy the local JSON repository or its process-memory sessions as production infrastructure. Add a Neon-backed implementation of the repository interface and a durable session adapter before enabling production startup.
+Production uses the Neon Postgres repository and managed Auth JWT verification, and fails closed when `DATABASE_URL` or Auth URLs are missing. The same Hono app runs as a Neon Function and as a local Node server. Private report exports use Neon Object Storage. See [NEON.md](NEON.md) for the schema, bootstrap, env setup, and live service tests.
 
 ## Public tracking credential
 
@@ -85,3 +86,25 @@ actions. `delete-services {serviceIds}` and `delete-ministries {names}` accept
 delete; disabling remains available. Ministry rename/delete keeps availability
 metadata synchronized. Optional flags and their types are checked on persistence
 reads and writes.
+
+## Banner quotes
+
+`WorkspaceState.bannerQuotes` stores the quote library and a daily selection in
+the existing JSONB aggregate. An authenticated workspace read picks and persists
+a quote under the repository lock when the Johannesburg calendar day changes.
+Every approved member receives the same daily snapshot; only Cell 0 leaders
+receive the library and can manage it through `/api/actions`:
+
+- `save-banner-quote {quote:{id?,text,author}}` creates or edits a library entry.
+- `delete-banner-quotes {quoteIds}` atomically deletes 1–100 unique entries.
+- `set-banner-quote-today {quoteId}` overrides today's banner for everyone.
+- `reset-banner-quote-today` restores the original daily pick.
+
+Text is required (up to 1,000 characters), as is attribution (up to 160).
+Daily picks and overrides are snapshots: library edits or deletion leave today's
+banner intact. Overrides clear at midnight in `Africa/Johannesburg`. Empty
+libraries produce no banner on the following day; adding the first quote to an
+empty daily selection displays it immediately. Legacy workspaces start with the
+existing Overview quote. No additional database migration or scheduled job is
+required. Open workspace pages refresh at the day boundary as well as through
+their existing refresh and Realtime behavior.

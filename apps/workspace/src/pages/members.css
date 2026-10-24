@@ -107,51 +107,12 @@
 
 .members-form {
   display: grid;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
+  gap: var(--space-4);
+  margin: 0;
   padding: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
-}
-
-.members-form-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.members-form-heading h3 {
-  margin: 0;
-  color: var(--ink);
-  font-size: var(--text-md);
-  line-height: var(--text-md-line);
-  font-weight: 650;
-}
-
-.members-form-heading p {
-  margin: 2px 0 0;
-  color: var(--muted);
-  font-size: var(--text-xs);
-  line-height: 1.45;
-}
-
-.members-icon-button {
-  display: grid;
-  width: 32px;
-  height: 32px;
-  flex: none;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--muted);
-}
-
-.members-icon-button:hover {
-  background: var(--surface-hover);
-  color: var(--ink);
 }
 
 .members-form-grid {

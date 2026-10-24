@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "@tanstack/react-router";
 import {
   Check,
@@ -15,6 +15,7 @@ import {
   DataTable,
   EditableTextCell,
   Field,
+  Modal,
   Switch,
   type DataTableColumnDef,
 } from "@moc/ui";
@@ -167,12 +168,18 @@ export default function SettingsPage() {
   const [inviteLink, setInviteLink] = useState("");
   const [invitedEmail, setInvitedEmail] = useState("");
   const [copyFeedback, setCopyFeedback] = useState("");
+  const inviteButtonRef = useRef<HTMLButtonElement>(null);
+  const inviteNameRef = useRef<HTMLInputElement>(null);
+  const inviteFeedbackRef = useRef<HTMLDivElement>(null);
   const departments = state?.catalog?.departments ?? [];
   const members = state?.users ?? [];
   const canManage = Boolean(
     user?.approved && user.isLeader && user.department === "cell-0",
   );
   const canManagePublicRequest = Boolean(user?.approved && user.isLeader);
+  useEffect(() => {
+    if (inviteOpen && feedback) inviteFeedbackRef.current?.focus();
+  }, [inviteOpen, feedback]);
   const sortedMembers = useMemo(
     () =>
       members
@@ -274,6 +281,7 @@ export default function SettingsPage() {
 
   const inviteMember = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (busyKey) return;
     if (!inviteForm.groups.length) {
       setFeedback("Choose at least one group for this member.");
       return;
@@ -367,6 +375,13 @@ export default function SettingsPage() {
     if (operation) void run("retry", operation);
   };
 
+  const closeInvite = () => {
+    if (busyKey) return;
+    setInviteOpen(false);
+    setFeedback("");
+    setRetryOperation(null);
+  };
+
   if (loading)
     return (
       <div className="workspace-page">
@@ -396,7 +411,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {feedback && (
+      {feedback && !inviteOpen && (
         <div className="workflow-alert members-feedback" role="alert">
           <span>{feedback}</span>
           {retryOperation && (
@@ -435,14 +450,17 @@ export default function SettingsPage() {
             <div className="members-section-heading">
               <h2 id="members-heading">Members</h2>
               <Button
+                ref={inviteButtonRef}
                 variant="primary"
+                disabled={Boolean(busyKey)}
                 onClick={() => {
                   setFeedback("");
+                  setRetryOperation(null);
                   setInviteForm(initialForm());
-                  setInviteOpen((open) => !open);
+                  setInviteOpen(true);
                 }}
               >
-                <UserPlus size={16} /> {inviteOpen ? "Close invite" : "Invite member"}
+                <UserPlus size={16} /> Invite member
               </Button>
             </div>
 
@@ -472,25 +490,16 @@ export default function SettingsPage() {
               </aside>
             )}
 
-            {inviteOpen && (
-              <form className="members-form" onSubmit={inviteMember}>
-                <div className="members-form-heading">
-                  <div>
-                    <h3>Invite a member</h3>
-                    <p>The invitation is bound to the email address they verify.</p>
-                  </div>
-                  <button
-                    type="button"
-                    className="members-icon-button"
-                    aria-label="Close invite form"
-                    onClick={() => setInviteOpen(false)}
-                  >
-                    <X size={17} />
-                  </button>
-                </div>
+            <Modal open={inviteOpen} title="Invite a member" className="[--modal-width:560px]"
+              initialFocus={inviteNameRef} finalFocus={inviteButtonRef}
+              onClose={closeInvite}>
+              <form className="members-form" onSubmit={inviteMember} aria-busy={Boolean(busyKey) || undefined}>
+                <p className="m-0 text-sm leading-5 text-[var(--muted)]">The invitation is bound to the email address they verify.</p>
                 <div className="members-form-grid">
                   <Field label="Full name">
                     <input
+                      ref={inviteNameRef}
+                      disabled={Boolean(busyKey)}
                       required
                       maxLength={120}
                       autoComplete="name"
@@ -503,6 +512,7 @@ export default function SettingsPage() {
                   </Field>
                   <Field label="Email address">
                     <input
+                      disabled={Boolean(busyKey)}
                       required
                       type="email"
                       maxLength={254}
@@ -516,6 +526,7 @@ export default function SettingsPage() {
                   </Field>
                   <Field label="Duty">
                     <input
+                      disabled={Boolean(busyKey)}
                       required
                       maxLength={120}
                       value={inviteForm.duty}
@@ -527,6 +538,7 @@ export default function SettingsPage() {
                   </Field>
                   <Field label="Department">
                     <select
+                      disabled={Boolean(busyKey)}
                       required
                       value={inviteForm.department}
                       onChange={(event) =>
@@ -549,6 +561,7 @@ export default function SettingsPage() {
                   </Field>
                 </div>
                 <GroupPicker
+                  disabled={Boolean(busyKey)}
                   departments={departments}
                   form={inviteForm}
                   onToggle={(group, checked) =>
@@ -558,28 +571,34 @@ export default function SettingsPage() {
                 <Switch
                   className="member-switch"
                   checked={inviteForm.isLeader}
-                  disabled={false}
+                  disabled={Boolean(busyKey)}
                   name="Invite member as a leader"
                   onChange={(checked) =>
                     setInviteForm({ ...inviteForm, isLeader: checked })
                   }
                   help="Leaders can manage request options. Workspace access is controlled separately."
                 />
+                {feedback && <div ref={inviteFeedbackRef} tabIndex={-1} className="workflow-alert members-feedback" role="alert">
+                  <span>{feedback}</span>
+                  {retryOperation && <Button size="sm" type="button" disabled={Boolean(busyKey)} onClick={retryLastAction}>
+                    <RefreshCw size={14} aria-hidden="true" /> {busyKey === "retry" ? "Retrying…" : "Retry"}
+                  </Button>}
+                </div>}
                 <div className="members-form-actions">
-                  <Button type="button" onClick={() => setInviteOpen(false)}>
+                  <Button type="button" disabled={Boolean(busyKey)} onClick={closeInvite}>
                     Cancel
                   </Button>
                   <Button
                     variant="primary"
                     type="submit"
-                    disabled={busyKey === "invite" || departments.length === 0}
+                    disabled={Boolean(busyKey) || departments.length === 0}
                   >
                     <UserPlus size={15} />
-                    {busyKey === "invite" ? "Inviting…" : "Invite member"}
+                    {busyKey === "invite" || busyKey === "retry" ? "Inviting…" : "Invite member"}
                   </Button>
                 </div>
               </form>
-            )}
+            </Modal>
 
             {tableOverflow && <p className="members-table-scroll-cue" aria-hidden="true">Scroll horizontally to see all member fields →</p>}
             <DataTable.Root
@@ -679,14 +698,16 @@ function GroupPicker({
   departments,
   form,
   onToggle,
+  disabled = false,
 }: {
   departments: { id: string; groups: string[] }[];
   form: MemberForm;
   onToggle: (group: string, checked: boolean) => void;
+  disabled?: boolean;
 }) {
   const groups = departments.find((department) => department.id === form.department)?.groups ?? [];
   return (
-    <fieldset className="members-groups-fieldset">
+    <fieldset className="members-groups-fieldset" disabled={disabled}>
       <legend>Groups</legend>
       <div className="members-group-options">
         {groups.map((group) => (

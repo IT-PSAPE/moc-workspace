@@ -6,6 +6,43 @@ checkpoint; later changes require focused revalidation. Round 1 and Round 2
 results are historical and do not establish acceptance of the Round 3
 candidate.
 
+## Public request catalog follow-up — 24 October 2026
+
+Settings → Public request now manages persisted request types and ministries
+through separate Request types and Ministries tabs, editable tables, Enabled
+switches, creation dialogs and confirmed bulk deletion. Referenced options can be disabled without breaking existing requests.
+
+The automated suite passes 88 tests, including availability, authorization,
+persistence reload, historical edits/approval and atomic deletion. Production
+builds pass. The existing catalog routing browser journey passes against the
+new Settings section. Dedicated desktop/mobile checks are in
+`scripts/check-ui-public-catalog.mjs`; ignored evidence is under
+`output/reviews/public-catalog/`.
+
+## Lifecycle, table and Settings follow-up — 24 October 2026
+
+The current follow-up unifies task columns and floating detail drawers, adds
+first-entry lifecycle reporting, restricts the request inbox to Cell 0, and
+adds Settings secondary navigation plus checkbox bulk actions.
+
+Validation passed 76 unit/API/reporting/migration tests, production builds and
+30 contrast pairings. Desktop/390px end-to-end flows exercise submission,
+backlog editing, approval, task transitions, tracking, shared drawers and CSV.
+Four isolated bulk journeys cover members/departments at 1440px and 390px,
+including protected rows, select-all/mixed state, atomic failure/retry,
+confirmation focus restoration and 44px phone checkbox targets.
+
+Lifecycle fixtures verify rejected-to-approved recovery, immutable first
+milestones, blank missing dates, valid duration samples and Johannesburg
+month boundaries. An additional Los Angeles browser check confirms request
+and task drawers display the same Johannesburg times as their tables.
+Independent review resolved Cell 0 member routing after service remapping.
+
+Current ignored evidence lives under `output/reviews/lifecycle-unification/`.
+All mutating browser checks use disposable API stores, never the running demo.
+The R3 numbers below remain historical; they are not a claim that the entire
+old gallery was rerun for this follow-up.
+
 ## Final R3 checkpoint
 
 The recorded source snapshot is
@@ -57,6 +94,8 @@ npm run check:contrast
 npm run verify:ui
 npm run shots
 node scripts/check-ui-refinements.mjs
+node scripts/check-ui-bulk-settings.mjs
+node scripts/check-ui-public-catalog.mjs
 node scripts/check-ui-state-coverage.mjs
 ```
 
@@ -64,3 +103,6 @@ The `shots` gallery is written to ignored `.shots/`; the state-coverage and
 review outputs are written under ignored `output/`. These commands can produce
 new evidence for the current checkout, but do not by themselves update the
 historical checkpoint results above.
+
+When bundled Chromium is unavailable, set `PLAYWRIGHT_CHANNEL=chrome` for
+the local harnesses to use the installed Google Chrome browser.

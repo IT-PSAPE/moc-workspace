@@ -25,7 +25,7 @@ The API defaults to an on-disk JSON repository. `DEMO_MODE=true` in `apps/api/.e
 | Package           | Responsibility                                                                                            |
 | ----------------- | --------------------------------------------------------------------------------------------------------- |
 | `apps/workspace`  | Leader dashboard, departments, boards, inbox, calendar, reports and access management                     |
-| `apps/portal`     | Account-free request submission, secure-code tracking and pending edits                                   |
+| `apps/portal`     | Account-free request submission, secure-code tracking and edits while awaiting review                                   |
 | `apps/api`        | Hono API, Google OAuth, opaque cookie sessions, permission checks, persistence and Telegram notifications |
 | `packages/shared` | TypeScript contracts, service routing, validated domain actions and demo fixtures                         |
 | `packages/client` | HTTP client and TanStack Query hooks; no database credentials                                             |
@@ -33,7 +33,7 @@ The API defaults to an on-disk JSON repository. `DEMO_MODE=true` in `apps/api/.e
 
 Both frontends use TypeScript, React, Tailwind CSS and Base UI. The workspace uses TanStack Router; both applications use TanStack Query. The frontend follows current moc-console patterns for its compact icon rail, contextual navigation, public request flow, and self-hosted DM Sans and Geist Mono typography. Shared tokens and primitives live in `packages/ui`, alongside application-specific styles. See [DESIGN.md](docs/DESIGN.md) for the design rationale.
 
-Current approved members sign in with a verified invited email. Member access and leadership are separate: approved members retain the task permissions for their department, current leaders manage request options, and Cell 0 leaders manage members, departments, and request review. Cell 0 also manages its private work, internal tasks, and monthly reports. Team notes are private to Cell 0 and the owning department; public tracking never includes them. Department calendars show members their own deadlines, while Cell 0 sees all. See [MANAGED-REQUESTS.md](docs/MANAGED-REQUESTS.md) for the persisted membership and authorization contract.
+Current approved members sign in with a verified invited email. Member access and leadership are separate: approved members retain the task permissions for their department, current leaders manage request types and ministries in Settings → Public request, and Cell 0 leaders manage members, departments, and request review. Cell 0 also manages its private work, internal tasks, and monthly reports. Team notes are private to Cell 0 and the owning department; public tracking never includes them. Department calendars show members their own deadlines, while Cell 0 sees all. See [MANAGED-REQUESTS.md](docs/MANAGED-REQUESTS.md) for the persisted membership and authorization contract.
 
 ## Verification
 
@@ -60,4 +60,4 @@ Configuration is documented in [API.md](docs/API.md) and [AUTH.md](docs/AUTH.md)
 
 Each application has its own `.env.example`. API secrets belong only in `apps/api/.env`; the two Vite apps receive public API origins. Vite embeds `VITE_*` variables at build time, so set them before building each frontend for its eventual host. The API reads its environment at runtime and honours the host-provided `PORT` (including Heroku). The root example is an API convenience template. Neon credentials will be added only to the API when its adapter is implemented. No deployment is configured or performed yet.
 
-Public submission issues a reference for leaders and a separate random tracking code for the requester. Keep that code private: it unlocks request details and pending edits. The API stores only its hash; it cannot recover a lost code. Codes stay out of URLs and browser storage. Existing demo records created before this change do not gain a public tracking credential.
+Public submission issues a reference for leaders and a separate random tracking code for the requester. Keep that code private: it unlocks request details and edits while awaiting review. The API stores only its hash; it cannot recover a lost code. Codes stay out of URLs and browser storage. Existing demo records created before this change do not gain a public tracking credential.

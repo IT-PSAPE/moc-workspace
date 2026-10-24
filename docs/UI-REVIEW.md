@@ -29,7 +29,7 @@ Completion requires:
    evidence explaining why it is not a defect. Preference alone is not proof.
 4. A second independent review wave of 20 Luna agents against the final
    implementation, with overlapping route-family responsibilities that cover
-   the R3 matrix, prior findings and known gaps. Repeat focused review when
+   the current behavior matrix, prior findings and known gaps. Repeat focused review when
    subsequent changes invalidate a verdict.
 5. No unresolved usability/design regressions or unreported high-risk gaps in
    the accepted state matrix. Remaining untested combinations must be named and
@@ -37,6 +37,35 @@ Completion requires:
    passing test suite.
 6. Relevant type/build/domain/API/browser checks pass, and current live data
    and all pre-existing workspace changes remain preserved.
+
+## Current behavior scope (post-R3)
+
+These contracts supersede affected R3 matrix and checkpoint guidance below.
+They describe the current review target; this section adds no render, test or
+acceptance pass claims.
+
+- The Members roster and Departments task overview use the shared
+  `@moc/ui` DataTable built from the shadcn Table primitive and TanStack
+  Table v9. Name cells stay contenteditable in place: blur, Enter and Tab save;
+  Escape restores. Duty and Groups use searchable creatable selectors; Duty
+  options are derived from existing member values. Department selects
+  searchable existing options only. Combo changes save immediately without
+  inline row Save/Cancel controls.
+- Department and member management lives in Settings. Department sidebars have
+  no context or ellipsis actions for rename, management or deletion.
+- Task state is pending, in-progress or completed. Task percentage fields,
+  progress displays, aggregates and progress-based ordering are removed. The
+  local JSON migration strips legacy task progress and priority while
+  preserving unrelated task data. Dashboard active work sorts by due date, with
+  status and creation date as tie-breakers.
+- Public request creation retains its two-step form and step indicator; that
+  indicator is not task progress. Tracking requires the private bearer code,
+  distinct from the display reference. The portal places the distinction and
+  reference-specific/lookup errors below the tracking form.
+
+This section records the behavior contract, not verification results.
+Preserve the dated review records below as evidence for their named earlier
+candidates only.
 
 ## Review kickoff snapshot (historical)
 
@@ -84,29 +113,29 @@ states. Reuse them only where the relevant source and behavior remain unchanged,
 and map that evidence into the current matrix. A focused fix report may resolve
 the finding it addresses without accepting other states on that screen.
 
-## Round 3 representative acceptance matrix
+## Round 3 representative acceptance matrix (historical)
 
-This table is the current review matrix for R3. It describes representative
-behaviors, not every possible combination. Record evidence and a scoped
-PASS/FAIL/INCONCLUSIVE result for each applicable row; add cases when an
-observed failure or a changed shared component creates a concrete risk.
+This table recorded representative review behaviors for the R3 candidate. It
+describes representative behaviors, not every possible combination. Its
+results apply only to that candidate; the post-R3 scope above requires fresh
+review for changed behaviors.
 
 | Matrix row | Representative coverage |
 |---|---|
 | Route and responsive shell | Overview, departments, requests, Work, reports, Settings and public portal at desktop and phone sizes; include 834px and 320px checks where the changed layout, table or drawer has a breakpoint or narrow-width risk. Preserve the complete All departments link and overview. |
 | Data density | Populated and true-empty examples for data surfaces; one long-title or dense fixture for each distinct list/table layout. Do not repeat the same fixture at every route and viewport unless it changes behavior. |
 | Roles and privacy | Cell 0 leader, department leader, approved nonleader and unapproved session at relevant access gates. Verify private inbox/member data and public tracking boundaries where those projections are involved; do not multiply every role across unrelated public or read-only screens. |
-| Management flows | Services/Ministries, departments/groups and members: cover each distinct mutation contract with a representative valid save, confirmation where required, invalid or in-use denial, recoverable API failure, and persisted result. Check desktop plus narrow phone for each distinct table/drawer/form pattern; verify authorization at the API boundary. |
-| Shared controls and overlays | Requests status SegmentedControl with compact search; FilterDrawer open/select/reset and focus behavior for other multi-field filters; segmented navigation; inline edit save/cancel/error; and confirmation/dialog/drawer keyboard/touch behavior. Exercise a shared primitive directly and at least one real route integration; retest all consumers after a shared primitive change. |
+| Management flows | Services/Ministries, departments/groups and members: cover each distinct mutation contract with a representative valid save, confirmation where required, invalid or in-use denial, recoverable API failure, and persisted result. For members, cover name editing, Duty creation/selection, existing-department selection, department-scoped Groups creation/assignment, and atomic failure behavior. Check desktop plus narrow phone for each distinct table/drawer/form pattern; verify authorization at the API boundary. |
+| Shared controls and overlays | Requests status SegmentedControl with compact search; FilterDrawer open/select/reset and focus behavior for other multi-field filters; segmented navigation; member cell-combobox search/results/Create, duplicate/blank disablement, immediate save, keyboard use and recoverable retry; inline text-edit save/cancel/error; and confirmation/dialog/drawer keyboard/touch behavior. Exercise a shared primitive directly and at least one real route integration; retest all consumers after a shared primitive change. |
 | Public request and tracking | Full form → review → back with draft preserved → receipt; representative field validation and service-dependent fields; pending edit, approved/in-progress, completed and rejected tracking outcomes, with credential privacy checked at the public boundary. |
 | Existing workflow changes | Request drawer/comment/approve/reject, board placement feedback, calendar day/week/month/agenda and department-colored events, dashboard chart keyboard/touch, and CSV export. Cover the changed behavior and its failure/empty or long-content branch where applicable. |
 
 Do not multiply every row across all viewport widths, roles, data states and
 overlays. Combine axes only when the implementation couples them or evidence
 identifies an interaction risk. The Round-1 matrix remains useful for discovery
-and gaps, but this R3 matrix governs current acceptance.
+and gaps for its candidate; it does not establish acceptance for post-R3 changes.
 
-## Current verification and next gate
+## R3 verification record and next gate (historical)
 
 Round-1 and Round-2 verification statements, hashes and assignments describe
 their historical candidates only. The Round-2 visual acceptance is superseded
@@ -114,10 +143,10 @@ for surfaces changed in Round 3. Focused R3 reports under
 `output/reviews/round3/` record the source hash and states they inspected; they
 support only those named states and do not establish a product-wide verdict.
 
-Complete the R3 matrix above against a frozen candidate, then run the
-independent 20-reviewer wave on that candidate. Keep each row's evidence and
-scoped verdict explicit; do not inherit a prior PASS when its source or behavior
-changed. No discovery report or focused component pass is blanket acceptance.
+At that checkpoint the next gate was to complete the R3 matrix against a
+frozen candidate and run the independent 20-reviewer wave. Those instructions
+record the R3 plan; they do not verify the post-R3 changes described above.
+Keep each verdict tied to its source and inspected states.
 
 ## Accepted steering during the review
 
@@ -157,8 +186,9 @@ not a coverage report or a current-candidate verdict.
   with the canonical input border token.
 
 These changes superseded candidate hash `5d9f5ada…`. The planned independent
-wave was stopped before browser inspection at that checkpoint; current
-acceptance is governed by the R3 matrix and next gate above.
+wave was stopped before browser inspection at that checkpoint. The R3 matrix
+below records that candidate's review plan; the post-R3 behavior scope above
+supersedes affected criteria and requires fresh review.
 
 
 ## Managed setup implementation
@@ -178,9 +208,10 @@ results and assignments are historical, and do not describe the later R3
 candidate or satisfy the R3 matrix.
 
 
-## Round 3: latest management and shared-pattern corrections
+## Round 3 management and shared-pattern checkpoint (historical)
 
-The current changes supersede Round-2 visual acceptance for affected surfaces.
+At the Round-3 checkpoint, changes superseded Round-2 visual acceptance for
+affected surfaces.
 The user explicitly rejected expanding group-input arrays in department rows,
 Unicode save/cancel glyphs, new pill/card patterns, generic inline filter
 strips and full-width searches. The Requests status filter is the single-filter
@@ -188,11 +219,17 @@ exception: it uses a shared SegmentedControl at the left of the toolbar, with
 compact search at the right and no separate Refresh or result count. Other
 multi-field filters remain in the shared drawer. Departments stay in a table;
 a Groups cell opens a focused group table in a right drawer with separate
-create/rename forms. Members keep direct cell editing. Every persisted entity
-deletion requires a confirmation dialog. Department actions move to the sidebar
-context/ellipsis menu. Local searches are capped at 320px.
+create/rename forms. Members use plain resting text or tags, click-to-edit
+validated names, a single creatable Duty selector sourced from existing member
+duties, a searchable existing-department selector, and a department-scoped
+multi-creatable Groups selector. Combo selections save immediately; the shared
+compact portaled popup keeps search, results and Create visible, disables blank
+and exact-duplicate values, and supports keyboard use and recoverable retry.
+Every persisted entity deletion requires a confirmation dialog. Department
+actions move to the sidebar context/ellipsis menu. Local searches are capped at
+320px.
 
-Current overlay guidance: every side drawer floats inside the viewport with an
+R3 checkpoint overlay guidance: every side drawer floats inside the viewport with an
 8px gap around its panel and rounded corners using the existing radius token.
 Request details have no tabs; request properties, brief, actions and comments
 remain in the same content scroll, with comments always following the request
@@ -202,7 +239,7 @@ Repeated department group descriptions are removed, not the groups themselves
 (user clarification). Per-task progress bars are removed only from the
 Departments task overview. The All departments navigation and overview remain.
 
-Ordinary styling uses the shared Tailwind utility entry without Preflight;
+At the R3 checkpoint, ordinary styling used the shared Tailwind utility entry without Preflight;
 reference theme imports avoid overriding MoC radius/color tokens. Actual
 rendered checks cover utility application, inline-edit phone widths, segmented
 control dimensions, notifications, filter drawers, group CRUD, confirmation
@@ -212,7 +249,7 @@ Round-2 reports remain historical scoped evidence and are not blanket current
 acceptance. Tests use a disposable API store, preserving the live demo data.
 
 
-## Final R3 checkpoint
+## Final R3 checkpoint (historical)
 
 Current source snapshot: `89bd9fc78b721d24ad38cdb28235e0f07b322027eedfd33d602f2d97ea063648`
 (85 product source files). The finite planned matrix passes 38/38 cases and 221

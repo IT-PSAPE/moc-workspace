@@ -13,7 +13,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { DataTable, type DataTableColumnDef } from "@moc/ui";
-import { useWorkspace } from "@moc/client";
+import { api, neonAuth, useWorkspace } from "@moc/client";
 import {
   createMonthlyReport,
   reportingMonthKey,
@@ -325,6 +325,8 @@ function WeeklyActivity({ report }: { report: MonthlyReport }) {
 export default function ReportsPage() {
   const { state, user, loading } = useWorkspace();
   const [month, setMonth] = useState(() => reportingMonthKey(new Date()));
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const monthLabel = monthFormatter.format(
     new Date(`${month}-15T12:00:00+02:00`),
@@ -377,7 +379,7 @@ export default function ReportsPage() {
     (request) => request.id === selected?.requestId,
   );
 
-  const exportCsv = () => {
+  const exportCsv = async () => {
     if (!report) return;
     const { metrics } = report;
     const lines = [
@@ -445,6 +447,22 @@ export default function ReportsPage() {
       ]),
     ];
     const csv = lines.map((row) => row.map(escapeCsv).join(",")).join("\r\n");
+    if (neonAuth) {
+      setExporting(true);
+      setExportError("");
+      try {
+        const result = await api<{ url: string; filename: string }>("/api/reports/export", {
+          method: "POST", body: JSON.stringify({ month, csv }),
+        });
+        const anchor = document.createElement("a");
+        anchor.href = result.url;
+        anchor.download = result.filename;
+        anchor.click();
+      } catch (error) {
+        setExportError((error as Error).message);
+      } finally { setExporting(false); }
+      return;
+    }
     const url = URL.createObjectURL(
       new Blob([csv], { type: "text/csv;charset=utf-8" }),
     );
@@ -508,9 +526,10 @@ export default function ReportsPage() {
             type="button"
             className="button button-secondary button-md report-export"
             onClick={exportCsv}
+            disabled={exporting}
           >
             <Download size={16} aria-hidden="true" />
-            Export CSV
+            {exporting ? "Preparing export…" : "Export CSV"}
           </button>
         </div>
       </div>
@@ -518,6 +537,7 @@ export default function ReportsPage() {
         Milestones recorded in {monthLabel}. Dates and month boundaries use
         Johannesburg time.
       </p>
+      {exportError && <p role="alert" className="workflow-feedback">{exportError}</p>}
       <section className="report-metrics" aria-label="Monthly report metrics">
         <article className="report-metric">
           <div className="report-metric-label">

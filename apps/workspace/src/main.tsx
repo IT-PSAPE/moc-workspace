@@ -8,7 +8,7 @@ import "./styles.css";
 import "@moc/ui/utilities.css";
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <ClientProvider>
+    <ClientProvider liveWorkspace>
       <App />
     </ClientProvider>
   </React.StrictMode>,

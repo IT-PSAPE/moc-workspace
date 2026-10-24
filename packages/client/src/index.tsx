@@ -4,7 +4,12 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import { createRealtimeClient, type SealedLiveQuery } from "@neon/realtime/client";
+import { RealtimeProvider, useLiveQuery } from "@neon/realtime-react";
+import { authHeaders, neonAuth } from "./auth";
+import { millisecondsUntilNextQuoteDay } from "@moc/shared";
+export { neonAuth, signInWithGoogle } from "./auth";
 import type {
   Department,
   Leader,
@@ -33,7 +38,7 @@ export async function api<T>(
   const response = await fetch(`${API_URL}${path}`, {
     credentials: "include",
     ...options,
-    headers: { "Content-Type": "application/json", ...options.headers },
+    headers: { "Content-Type": "application/json", ...(/\/api\/(session|workspace|actions|integrations|reports)(\/|$)/.test(path) ? await authHeaders() : {}), ...options.headers },
   });
   const body = await response
     .json()
@@ -50,10 +55,43 @@ const queryClient = new QueryClient({
     queries: { retry: 1, refetchOnWindowFocus: true, staleTime: 15000 },
   },
 });
-export function ClientProvider({ children }: { children: ReactNode }) {
-  return (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-  );
+interface WorkspaceRevision { id: string; revision: string }
+const realtimeClient = environment?.VITE_NEON_REALTIME_URL
+  ? createRealtimeClient({ url: environment.VITE_NEON_REALTIME_URL }) : null;
+
+export function ClientProvider({ children, liveWorkspace = false }: { children: ReactNode; liveWorkspace?: boolean }) {
+  const content = <QueryClientProvider client={queryClient}>
+    {liveWorkspace && realtimeClient ? <WorkspaceRealtimeSync /> : null}
+    {children}
+  </QueryClientProvider>;
+  return liveWorkspace && realtimeClient
+    ? <RealtimeProvider client={realtimeClient}>{content}</RealtimeProvider> : content;
+}
+
+function WorkspaceRealtimeSync() {
+  const { session } = useSession();
+  const userId = session?.user?.approved ? session.user.id : undefined;
+  const queryKey = ["workspace-live", userId];
+  const fetchSealed = useCallback(() => api<SealedLiveQuery<WorkspaceRevision>>("/api/workspace/live", { method: "POST" }), [userId]);
+  const sealed = useQuery({ queryKey, queryFn: fetchSealed, enabled: Boolean(userId), refetchOnWindowFocus: false });
+  return userId && sealed.data ? <LiveWorkspaceRevision key={`${userId}-${sealed.data.capability}`} sealed={sealed.data} refresh={fetchSealed} /> : null;
+}
+
+function LiveWorkspaceRevision({ sealed, refresh }: { sealed: SealedLiveQuery<WorkspaceRevision>; refresh: () => Promise<SealedLiveQuery<WorkspaceRevision>> }) {
+  const { data, status } = useLiveQuery(sealed, { refreshQuery: refresh });
+  const revision = data?.[0]?.revision;
+  const previous = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (status !== "live" || data === undefined) return;
+    if (!data.length) {
+      queryClient.removeQueries({ queryKey: ["workspace"] });
+      void queryClient.invalidateQueries({ queryKey: ["session"] });
+    } else if (previous.current !== revision) {
+      previous.current = revision;
+      void queryClient.invalidateQueries({ queryKey: ["workspace"] });
+    }
+  }, [data, revision, status]);
+  return status === "error" ? <span role="status" className="sr-only">Live updates paused. Refresh to reconnect.</span> : null;
 }
 const empty: WorkspaceState = {
   catalog: { ministries: [], services: [], departments: [] },
@@ -109,7 +147,7 @@ export function useWorkspace() {
     // A page mounting after the shell's initial failure must not restart the
     // same failed request and replace the recovery UI with another loader.
     retryOnMount: false,
-    refetchInterval: 15000,
+    refetchInterval: () => Math.min(15000, millisecondsUntilNextQuoteDay()),
   });
   const user = session?.user as Leader;
   async function act(action: WorkspaceAction) {
@@ -143,6 +181,10 @@ export function useWorkspace() {
     client.setQueryData(["session"], result);
   }
   async function logout() {
+    if (neonAuth) {
+      const { error } = await neonAuth.signOut();
+      if (error) throw new Error(error.message || "Sign-out failed.");
+    }
     await api("/api/auth/logout", { method: "POST" });
     client.clear();
     window.location.assign("/login");

@@ -22,6 +22,7 @@ import type { Department, DepartmentDefinition, Member, SubTeam } from "@moc/sha
 import { useWorkspace } from "@moc/client";
 import { DepartmentManagement } from "../DepartmentManagement";
 import RequestCatalog from "../RequestCatalog";
+import BannerQuotes from "../BannerQuotes";
 import { MemberBulkActions } from "../components/MemberBulkActions";
 import "./workflows.css";
 import "./members.css";
@@ -155,7 +156,7 @@ const memberColumns: DataTableColumnDef<MemberRow>[] = [
 export default function SettingsPage() {
   const { state, user, loading, act } = useWorkspace();
   const { hash } = useLocation();
-  const section = hash === "public-request" ? "public-request" : hash === "departments" ? "departments" : "members";
+  const section = hash === "public-request" ? "public-request" : hash === "banner-quotes" ? "banner-quotes" : hash === "departments" ? "departments" : "members";
   const [tableOverflow, setTableOverflow] = useState(false);
   const [tableWrapElement, setTableWrapElement] = useState<HTMLDivElement | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -421,6 +422,8 @@ export default function SettingsPage() {
 
       {section === "public-request" && canManagePublicRequest ? (
         <RequestCatalog />
+      ) : section === "banner-quotes" && canManage ? (
+        <BannerQuotes />
       ) : canManage ? (
         <>
           {section === "members" ? (

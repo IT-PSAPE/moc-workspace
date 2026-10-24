@@ -14,6 +14,7 @@ import {
   Quote,
 } from "lucide-react";
 import { useWorkspace } from "@moc/client";
+import { currentBannerQuote } from "@moc/shared";
 import { Badge, Button } from "@moc/ui";
 import DetailsDrawer from "../components/DetailsDrawer";
 import TaskDetails from "../TaskDetails";
@@ -53,6 +54,7 @@ function shortRelative(value: string) {
 
 export default function Dashboard() {
   const { state, user } = useWorkspace();
+  const bannerQuote = currentBannerQuote(state.bannerQuotes);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const tasks = state?.tasks ?? [];
   const selected = tasks.find((task) => task.id === selectedId);
@@ -168,16 +170,16 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <aside aria-label="Workspace inspiration" className="relative flex min-h-24 overflow-hidden rounded-[var(--radius-lg)] border border-solid border-[var(--line)] bg-[var(--surface)]">
+      {bannerQuote && <aside aria-label="Workspace inspiration" className="relative flex min-h-24 overflow-hidden rounded-[var(--radius-lg)] border border-solid border-[var(--line)] bg-[var(--surface)]">
         <div className="z-[1] flex w-16 shrink-0 items-center justify-center bg-[var(--brand-50)] text-[var(--brand-700)] max-[767px]:w-12">
           <Quote size={26} strokeWidth={1.5} aria-hidden="true" />
         </div>
         <figure className="relative z-[1] m-0 min-w-0 flex-1 px-5 py-5 sm:pr-44 max-[767px]:px-4 max-[767px]:py-4">
-          <blockquote className="m-0 text-lg leading-7 font-medium italic max-[767px]:text-base max-[767px]:leading-6">
-            “Fulfil your duty with faith and excellence.”
+          <blockquote className="m-0 text-lg leading-7 font-medium italic [overflow-wrap:anywhere] max-[767px]:text-base max-[767px]:leading-6">
+            “{bannerQuote.text}”
           </blockquote>
-          <figcaption className="mt-1 text-xs leading-4 text-[var(--muted)]">
-            — Chairman Man-Hee Lee
+          <figcaption className="mt-1 text-xs leading-4 text-[var(--muted)] [overflow-wrap:anywhere]">
+            — {bannerQuote.author}
           </figcaption>
         </figure>
         <svg
@@ -206,7 +208,7 @@ export default function Dashboard() {
             ))}
           </g>
         </svg>
-      </aside>
+      </aside>}
 
       <section className="dashboard-stats" aria-label="Workspace statistics">
         <article className="dashboard-stat">

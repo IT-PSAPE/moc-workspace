@@ -17,6 +17,7 @@ import {
   Building2,
   Users,
   ChevronRight,
+  Quote,
 } from "lucide-react";
 import { useWorkspace } from "@moc/client";
 import { Button, Dropdown, Modal, Tooltip, TooltipProvider } from "@moc/ui";
@@ -87,6 +88,8 @@ export default function Shell({ children }: { children: ReactNode }) {
   const secondaryName = isSettings ? "settings" : "department";
   const settingsSection = canManagePublicRequest && hash === "public-request"
     ? "public-request"
+    : canManageSettings && hash === "banner-quotes"
+      ? "banner-quotes"
     : canManageSettings && hash === "departments"
       ? "departments"
       : "members";
@@ -103,6 +106,7 @@ export default function Shell({ children }: { children: ReactNode }) {
       ]
       : [{ label: "Your account", section: "members", hash: "", icon: Users }]),
     ...(canManagePublicRequest ? [{ label: "Public request", section: "public-request", hash: "public-request", icon: ClipboardList }] : []),
+    ...(canManageSettings ? [{ label: "Banner quotes", section: "banner-quotes", hash: "banner-quotes", icon: Quote }] : []),
   ];
   function signOut() {
     void logout().catch((error: unknown) =>

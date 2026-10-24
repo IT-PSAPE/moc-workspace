@@ -170,6 +170,7 @@ export function createApiApp(
     return c.json({
       services: catalog.services,
       ministries: catalog.ministries,
+      disabledMinistries: catalog.disabledMinistries ?? [],
       departments: catalog.departments,
     });
   });
@@ -346,13 +347,13 @@ export function createApiApp(
     }
     const state = await repository.read();
     const existing = findRequestByTrackingCode(state, body.code);
-    if (!existing || existing.status !== "pending")
+    if (!existing || existing.status !== "backlog")
       return c.json({ error: "Request was not found." }, 404);
     let result: ReturnType<typeof updatePublicRequest> | undefined;
     try {
       await repository.update((state) => {
         const current = findRequestByTrackingCode(state, body.code);
-        if (!current || current.status !== "pending")
+        if (!current || current.status !== "backlog")
           throw new Error("Request was not found.");
         result = updatePublicRequest(
           state,
@@ -445,31 +446,44 @@ function projectWorkspace(
         ({ trackingCodeHash: _trackingCodeHash, ...request }) => request,
       ),
     };
+  const cell0RequestTaskIds = new Set<string>();
+  if (user.department === "cell-0") {
+    const approvedRequests = new Map(
+      state.requests
+        .filter((request) => request.status === "approved")
+        .map((request) => [request.id, request]),
+    );
+    const assignedTaskIds = new Set(
+      [...approvedRequests.values()].flatMap((request) =>
+        request.taskId ? [request.taskId] : [],
+      ),
+    );
+    for (const task of state.tasks) {
+      const request = task.requestId
+        ? approvedRequests.get(task.requestId)
+        : undefined;
+      if (
+        assignedTaskIds.has(task.id) ||
+        (request && !request.taskId)
+      )
+        cell0RequestTaskIds.add(task.id);
+    }
+  }
   const publicTasks = state.tasks.filter((task) =>
     user.department === "cell-0"
-      ? task.department === "cell-0"
+      ? task.department === "cell-0" || cell0RequestTaskIds.has(task.id)
       : task.department !== "cell-0",
-  );
-  const taskIds = new Set(publicTasks.map((task) => task.id));
-  const requestIds = new Set(
-    publicTasks
-      .map((task) => task.requestId)
-      .filter((id): id is string => id !== undefined),
   );
   return {
     catalog: state.catalog,
     tasks: publicTasks.map((task) =>
-      task.department === user.department
+      task.department === user.department || cell0RequestTaskIds.has(task.id)
         ? task
         : { ...task, privateNotes: [] },
     ),
-    requests: state.requests
-      .filter(
-        (request) =>
-          (request.taskId !== undefined && taskIds.has(request.taskId)) ||
-          requestIds.has(request.id),
-      )
-      .map(publicRequest),
+    requests: user.department === "cell-0"
+      ? state.requests.map(({ trackingCodeHash: _trackingCodeHash, ...request }) => request)
+      : [],
     users: state.users.filter((leader) => leader.id === user.id),
     activities: state.activities.filter(
       (activity) => activity.department === user.department,

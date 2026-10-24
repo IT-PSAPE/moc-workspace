@@ -3,6 +3,7 @@ import type {
   Activity,
   Department,
   Leader,
+  MinistryRequest,
   Task,
   WorkspaceState,
 } from "./types";
@@ -134,12 +135,11 @@ export function createSeedState(): WorkspaceState {
     ...titles.map((title, index): Task => {
       const [ministry, serviceId] = taskServices[index];
       const service = getService(serviceId)!;
-      const progress = ([0, 25, 50, 75, 100] as const)[index % 5];
       const status =
-        progress === 100
-          ? "completed"
-          : progress === 0
-            ? "pending"
+        index % 5 === 0
+          ? "pending"
+          : index % 5 === 4
+            ? "completed"
             : "in-progress";
       return {
         id: `task-demo-${String(index + 1).padStart(2, "0")}`,
@@ -152,10 +152,14 @@ export function createSeedState(): WorkspaceState {
         department: service.department,
         subTeam: service.subTeam,
         status,
-        progress,
         dueAt: iso((index % 11) - 3, 10 + (index % 8)),
         createdAt: iso(-((index % 18) + 1)),
-        ...(progress === 100 ? { completedAt: iso(-1) } : {}),
+        ...(status !== "pending" ? {
+          lifecycle: {
+            inProgressAt: iso(-Math.max(1, Math.floor(((index % 18) + 1) / 2))),
+            ...(status === "completed" ? { completedAt: iso(-1) } : {}),
+          },
+        } : {}),
         privateNotes:
           index % 4 === 0
             ? [
@@ -180,9 +184,9 @@ export function createSeedState(): WorkspaceState {
       department: "cell-0",
       subTeam: "Cell 0",
       status: "in-progress",
-      progress: 50,
       dueAt: iso(2),
       createdAt: iso(-2),
+      lifecycle: { inProgressAt: iso(-1) },
       privateNotes: [
         {
           id: "note-demo-cell0-01",
@@ -193,7 +197,7 @@ export function createSeedState(): WorkspaceState {
       ],
     },
   ];
-  const requests = [
+  const requests: MinistryRequest[] = [
     {
       id: "request-demo-1",
       reference: `MOC-${now.getFullYear()}-0001`,
@@ -204,9 +208,10 @@ export function createSeedState(): WorkspaceState {
       notes: "Use the approved event footage and include the conference theme.",
       dueAt: iso(5),
       airedDates: undefined,
-      status: "pending" as const,
+      status: "backlog" as const,
       createdAt: iso(-1),
       updatedAt: iso(-1),
+      lifecycle: { receivedAt: iso(-1) },
     },
     {
       id: "request-demo-2",
@@ -219,9 +224,10 @@ export function createSeedState(): WorkspaceState {
       notes: "The communications team will use this for the church archive.",
       dueAt: iso(7),
       airedDates: [iso(-30).slice(0, 10)],
-      status: "pending" as const,
+      status: "backlog" as const,
       createdAt: iso(-2),
       updatedAt: iso(-2),
+      lifecycle: { receivedAt: iso(-2) },
     },
     {
       id: "request-demo-3",
@@ -236,6 +242,7 @@ export function createSeedState(): WorkspaceState {
       status: "approved" as const,
       createdAt: iso(-4),
       updatedAt: iso(-3),
+      lifecycle: { receivedAt: iso(-4), approvedAt: iso(-3) },
       taskId: "task-demo-17",
     },
     {
@@ -251,10 +258,17 @@ export function createSeedState(): WorkspaceState {
       status: "rejected" as const,
       createdAt: iso(-5),
       updatedAt: iso(-4),
+      lifecycle: { receivedAt: iso(-5), rejectedAt: iso(-4) },
       rejectionReason:
         "Please submit this as part of the existing Sunday service sound request.",
     },
   ];
+  const approvedRequest = requests.find((request) => request.status === "approved")!;
+  const approvedTask = tasks.find((task) => task.id === approvedRequest.taskId)!;
+  approvedTask.requestId = approvedRequest.id;
+  approvedTask.createdAt = approvedRequest.lifecycle!.approvedAt!;
+  approvedTask.lifecycle = { ...approvedRequest.lifecycle, inProgressAt: iso(-2) };
+  approvedRequest.lifecycle = { ...approvedTask.lifecycle };
   const activities: Activity[] = [
     {
       id: "activity-demo-1",
@@ -273,9 +287,9 @@ export function createSeedState(): WorkspaceState {
     },
     {
       id: "activity-demo-3",
-      text: "Sunday service opening montage is now 50% complete.",
+      text: "Sunday service opening montage status changed to in progress.",
       department: "visual-media",
-      type: "progress",
+      type: "status",
       taskId: "task-demo-01",
       createdAt: iso(-1),
     },

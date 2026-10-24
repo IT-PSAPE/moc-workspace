@@ -1,12 +1,10 @@
 export type Department = string;
 export type SubTeam = string;
-export type DepartmentColor =
-  | "pink"
-  | "purple"
-  | "amber"
-  | "blue"
-  | "green"
-  | "teal";
+export const DEPARTMENT_COLORS = [
+  "pink", "purple", "amber", "blue", "green", "teal",
+  "red", "orange", "cyan", "indigo", "lime", "slate",
+] as const;
+export type DepartmentColor = (typeof DEPARTMENT_COLORS)[number];
 export interface DepartmentDefinition {
   id: Department;
   name: string;
@@ -14,8 +12,15 @@ export interface DepartmentDefinition {
   color: DepartmentColor;
 }
 export type TaskStatus = "pending" | "in-progress" | "completed";
-export type Progress = 0 | 25 | 50 | 75 | 100;
-export type ApprovalStatus = "pending" | "approved" | "rejected";
+export type ApprovalStatus = "backlog" | "approved" | "rejected";
+/** First recorded entry into each lifecycle stage; older records may have gaps. */
+export interface LifecycleTimestamps {
+  receivedAt?: string;
+  approvedAt?: string;
+  rejectedAt?: string;
+  inProgressAt?: string;
+  completedAt?: string;
+}
 export interface Member {
   id: string;
   name: string;
@@ -30,6 +35,8 @@ export interface Member {
 export type Leader = Member;
 export interface Catalog {
   ministries: string[];
+  /** Ministries retained for historical requests but hidden from new submissions. */
+  disabledMinistries?: string[];
   services: Service[];
   departments: DepartmentDefinition[];
 }
@@ -48,6 +55,7 @@ export interface MinistryRequest extends RequestInput {
   status: ApprovalStatus;
   createdAt: string;
   updatedAt: string;
+  lifecycle?: LifecycleTimestamps;
   rejectionReason?: string;
   taskId?: string;
   privateNotes?: Task["privateNotes"];
@@ -62,13 +70,13 @@ export interface Task {
   service: string;
   instructions: string;
   notes: string;
+  airedDates?: string[];
   department: Department;
   subTeam: SubTeam;
   status: TaskStatus;
-  progress: Progress;
   dueAt: string;
   createdAt: string;
-  completedAt?: string;
+  lifecycle?: LifecycleTimestamps;
   privateNotes: {
     id: string;
     text: string;
@@ -84,7 +92,7 @@ export interface Activity {
     | "request"
     | "approval"
     | "rejection"
-    | "progress"
+    | "status"
     | "completed"
     | "note"
     | "task"
@@ -117,12 +125,14 @@ export interface Service {
   department: Department;
   subTeam: SubTeam;
   requiresAiredDates?: boolean;
+  /** Missing values remain enabled for catalogs saved before availability controls. */
+  enabled?: boolean;
 }
 export interface PublicTracking {
   request: PublicRequest;
   task: Pick<
     Task,
-    "status" | "progress" | "department" | "subTeam" | "completedAt"
+    "status" | "department" | "subTeam" | "lifecycle"
   > | null;
 }
 export type PublicRequest = Omit<
@@ -149,22 +159,32 @@ export type WorkspaceAction =
   | {
       type: "update-task";
       taskId: string;
-      progress?: Progress;
-      status?: TaskStatus;
+      status: TaskStatus;
     }
   | { type: "add-note"; taskId: string; text: string }
   | { type: "add-request-note"; requestId: string; text: string }
   | { type: "create-task"; input: InternalTaskInput }
   | { type: "save-ministry"; name: string; previousName?: string }
+  | { type: "set-ministry-enabled"; name: string; enabled: boolean }
   | { type: "delete-ministry"; name: string }
+  | { type: "delete-ministries"; names: string[] }
   | { type: "save-service"; service: Service }
   | { type: "delete-service"; serviceId: string }
+  | { type: "delete-services"; serviceIds: string[] }
   | {
       type: "save-department";
       department: DepartmentDefinition;
       groupRenames?: Record<string, string>;
     }
   | { type: "delete-department"; departmentId: string }
+  | { type: "delete-departments"; departmentIds: string[] }
+  | { type: "delete-members"; userIds: string[] }
+  | {
+      type: "move-members";
+      userIds: string[];
+      department: Department;
+      groups: SubTeam[];
+    }
   | {
       type: "invite-member";
       input: {
@@ -190,5 +210,6 @@ export type WorkspaceAction =
           | "approved"
         >
       >;
+      createGroups?: string[];
     }
   | { type: "read-notifications" };

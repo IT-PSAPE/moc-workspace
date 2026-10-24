@@ -1,10 +1,11 @@
+import { DEPARTMENT_COLORS } from "./types";
 import type {
   Activity,
   Catalog,
-  DepartmentColor,
   DepartmentDefinition,
   InternalTaskInput,
   Leader,
+  LifecycleTimestamps,
   Member,
   MinistryRequest,
   PublicTracking,
@@ -89,15 +90,6 @@ function isValidDueDate(value: string): boolean {
 const isOneOf = <T>(value: unknown, values: readonly T[]): value is T =>
   values.includes(value as T);
 const isStableCatalogId = (value: string) => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
-const departmentColors: readonly DepartmentColor[] = [
-  "pink",
-  "purple",
-  "amber",
-  "blue",
-  "green",
-  "teal",
-];
-const progressValues = [0, 25, 50, 75, 100] as const;
 const taskStatuses = ["pending", "in-progress", "completed"] as const;
 
 function normalizedName(value: string): string {
@@ -123,7 +115,7 @@ function requireValidGroups(
   if (
     !Array.isArray(groups) ||
     groups.length === 0 ||
-    groups.some(
+    Array.from(groups).some(
       (group) =>
         typeof group !== "string" || !definition.groups.includes(group),
     )
@@ -141,11 +133,26 @@ function requireNonEmptyString(
     throw new Error(`${field} is required.`);
 }
 
-function withoutLegacyTaskPriority(task: Task): Task {
-  const { priority: _priority, ...currentTask } = task as Task & {
+function withoutRemovedTaskFields(task: Task): Task {
+  const {
+    priority: _priority,
+    progress: _progress,
+    completedAt: _completedAt,
+    ...currentTask
+  } = task as Task & {
     priority?: unknown;
+    progress?: unknown;
+    completedAt?: unknown;
   };
   return currentTask;
+}
+
+function recordMilestone(
+  lifecycle: LifecycleTimestamps | undefined,
+  milestone: keyof LifecycleTimestamps,
+  timestamp: string,
+): LifecycleTimestamps {
+  return { ...lifecycle, [milestone]: lifecycle?.[milestone] ?? timestamp };
 }
 
 function validateInternalTaskInput(
@@ -201,7 +208,7 @@ function validateDepartmentInput(input: unknown): void {
     throw new Error("Department ID must use lowercase letters, numbers, and hyphens.");
   requireNonEmptyString(value.name, "Department name");
   requireNonEmptyString(value.color, "Department color");
-  if (!isOneOf(value.color, departmentColors))
+  if (!isOneOf(value.color, DEPARTMENT_COLORS))
     throw new Error("Choose a valid department color.");
   if (
     !Array.isArray(value.groups) ||
@@ -275,9 +282,15 @@ function validateServiceInput(input: unknown, catalog: Catalog): void {
     typeof value.requiresAiredDates !== "boolean"
   )
     throw new Error("Aired date requirement must be true or false.");
+  if (value.enabled !== undefined && typeof value.enabled !== "boolean")
+    throw new Error("Request type availability must be true or false.");
 }
 
-function validateMemberChanges(changes: unknown, catalog: Catalog): void {
+function validateMemberChanges(
+  changes: unknown,
+  catalog: Catalog,
+  allowUncataloguedGroups = false,
+): void {
   if (!changes || typeof changes !== "object" || Array.isArray(changes))
     throw new Error("Member changes are required.");
   const value = changes as Record<string, unknown>;
@@ -296,8 +309,57 @@ function validateMemberChanges(changes: unknown, catalog: Catalog): void {
     throw new Error("Leader status must be true or false.");
   if (value.approved !== undefined && typeof value.approved !== "boolean")
     throw new Error("Member access must be true or false.");
-  if (value.department !== undefined && value.groups !== undefined)
+  if (
+    !allowUncataloguedGroups &&
+    value.department !== undefined &&
+    value.groups !== undefined
+  )
     requireValidGroups(catalog, value.department, value.groups);
+}
+
+function validateCreateGroups(input: unknown): string[] {
+  if (input === undefined) return [];
+  if (!Array.isArray(input) || input.length > 20)
+    throw new Error("Create up to 20 groups at a time.");
+  const groups = input.map((group) => {
+    if (typeof group !== "string")
+      throw new Error("New group names must be text.");
+    const label = group.trim();
+    if (!label || label.length > 120)
+      throw new Error("New group names must be between 1 and 120 characters.");
+    return label;
+  });
+  if (new Set(groups.map(normalizedName)).size !== groups.length)
+    throw new Error("New group names must be unique.");
+  return groups;
+}
+
+function validateGroupAssignment(
+  changes: unknown,
+  createGroups: string[],
+): void {
+  if (createGroups.length === 0) return;
+  if (!changes || typeof changes !== "object" || Array.isArray(changes))
+    throw new Error("Member changes are required.");
+  const groups = (changes as Record<string, unknown>).groups;
+  if (!Array.isArray(groups) || groups.some((group) => typeof group !== "string"))
+    throw new Error("Select every new group in the member's group assignment.");
+  const selected = new Set(groups.map((group) => normalizedName(group as string)));
+  if (createGroups.some((group) => !selected.has(normalizedName(group))))
+    throw new Error("Select every new group in the member's group assignment.");
+}
+
+function validateSelectedIds(
+  input: unknown,
+  label: string,
+): asserts input is string[] {
+  const singular = label === "ministries" ? "ministry" : label.slice(0, -1);
+  if (!Array.isArray(input) || input.length === 0 || input.length > 100)
+    throw new Error(`Select between 1 and 100 ${label}.`);
+  if (Array.from(input).some((id) => typeof id !== "string" || !id.trim()))
+    throw new Error(`Every selected ${singular} needs a valid ID.`);
+  if (new Set(input).size !== input.length)
+    throw new Error(`Select each ${singular} only once.`);
 }
 
 /** Validate an untrusted action payload before it reaches domain state. */
@@ -318,17 +380,11 @@ export function validateWorkspaceAction(
       return;
     case "update-task": {
       requireNonEmptyString(value.taskId, "Task ID");
-      if (
-        value.progress === undefined &&
-        value.status === undefined
-      )
-        throw new Error("Provide a task field to update.");
-      if (
-        value.progress !== undefined &&
-        !isOneOf(value.progress, progressValues)
-      )
-        throw new Error("Progress must be 0, 25, 50, 75, or 100.");
-      if (value.status !== undefined && !isOneOf(value.status, taskStatuses))
+      if (Object.prototype.hasOwnProperty.call(value, "progress"))
+        throw new Error("Percentage progress is no longer supported; update task status.");
+      if (value.status === undefined)
+        throw new Error("Provide a task status to update.");
+      if (!isOneOf(value.status, taskStatuses))
         throw new Error("Choose a valid task status.");
       return;
     }
@@ -350,16 +406,32 @@ export function validateWorkspaceAction(
       if (value.previousName !== undefined)
         requireNonEmptyString(value.previousName, "Previous ministry name");
       return;
+    case "set-ministry-enabled":
+      requireNonEmptyString(value.name, "Ministry name");
+      if (typeof value.enabled !== "boolean")
+        throw new Error("Ministry availability must be true or false.");
+      return;
     case "delete-ministry":
       requireNonEmptyString(value.name, "Ministry name");
+      return;
+    case "delete-ministries":
+      validateSelectedIds(value.names, "ministries");
+      if (new Set(value.names.map(normalizedName)).size !== value.names.length)
+        throw new Error("Select each ministry only once.");
       return;
     case "save-service":
       if (catalog) validateServiceInput(value.service, catalog);
       else if (!value.service || typeof value.service !== "object")
         throw new Error("Service details are required.");
+      else if ((value.service as Record<string, unknown>).enabled !== undefined &&
+        typeof (value.service as Record<string, unknown>).enabled !== "boolean")
+        throw new Error("Request type availability must be true or false.");
       return;
     case "delete-service":
       requireNonEmptyString(value.serviceId, "Service ID");
+      return;
+    case "delete-services":
+      validateSelectedIds(value.serviceIds, "services");
       return;
     case "save-department":
       if (catalog) {
@@ -374,6 +446,24 @@ export function validateWorkspaceAction(
     case "delete-department":
       requireNonEmptyString(value.departmentId, "Department ID");
       return;
+    case "delete-departments":
+      validateSelectedIds(value.departmentIds, "departments");
+      return;
+    case "delete-members":
+      validateSelectedIds(value.userIds, "members");
+      return;
+    case "move-members":
+      validateSelectedIds(value.userIds, "members");
+      requireNonEmptyString(value.department, "Department");
+      if (catalog) requireValidGroups(catalog, value.department, value.groups);
+      else if (
+        !Array.isArray(value.groups) ||
+        value.groups.length === 0 ||
+        Array.from(value.groups).some((group) => typeof group !== "string" || !group.trim()) ||
+        new Set(value.groups.map(normalizedName)).size !== value.groups.length
+      )
+        throw new Error("Choose one or more groups from the selected department.");
+      return;
     case "invite-member":
       if (catalog) validateNewMemberInput(value.input, catalog);
       else if (!value.input || typeof value.input !== "object")
@@ -381,9 +471,14 @@ export function validateWorkspaceAction(
       return;
     case "update-member":
       requireNonEmptyString(value.userId, "Member ID");
-      if (catalog) validateMemberChanges(value.changes, catalog);
-      else if (!value.changes || typeof value.changes !== "object")
-        throw new Error("Member changes are required.");
+      {
+        const createGroups = validateCreateGroups(value.createGroups);
+        validateGroupAssignment(value.changes, createGroups);
+        if (catalog)
+          validateMemberChanges(value.changes, catalog, createGroups.length > 0);
+        else if (!value.changes || typeof value.changes !== "object")
+          throw new Error("Member changes are required.");
+      }
       return;
     case "read-notifications":
       return;
@@ -392,16 +487,32 @@ export function validateWorkspaceAction(
   }
 }
 
-export function validateRequest(input: RequestInput, catalog: Catalog): void {
+/** Existing choices may only be supplied from a request already found in stored state. */
+export function validateRequest(
+  input: RequestInput,
+  catalog: Catalog,
+  existingRequest?: Pick<MinistryRequest, "status" | "ministry" | "service">,
+): void {
   if (!input || typeof input !== "object")
     throw new Error("Request details are required.");
   if (!catalog.ministries.includes(input.ministry))
     throw new Error("Choose a ministry from the ministry list.");
+  const editingBacklog = existingRequest?.status === "backlog";
+  if (
+    catalog.disabledMinistries?.includes(input.ministry) &&
+    !(editingBacklog && existingRequest.ministry === input.ministry)
+  )
+    throw new Error("This ministry is switched off. Choose an available ministry.");
   const service =
     typeof input.service === "string"
       ? catalog.services.find((item) => item.id === input.service)
       : undefined;
   if (!service) throw new Error("Choose a valid service.");
+  if (
+    service.enabled === false &&
+    !(editingBacklog && existingRequest.service === input.service)
+  )
+    throw new Error("This request type is switched off. Choose an available request type.");
   if (!input.title?.trim()) throw new Error("A request title is required.");
   if (!input.instructions?.trim())
     throw new Error("Instructions are required.");
@@ -515,9 +626,10 @@ export function createRequest(
     ...copyRequestInput(input),
     id: makeId("request"),
     reference: requestReference(state, createdAt),
-    status: "pending",
+    status: "backlog",
     createdAt,
     updatedAt: createdAt,
+    lifecycle: { receivedAt: createdAt },
   };
   const next = {
     ...state,
@@ -548,9 +660,9 @@ export function updatePublicRequest(
       request.reference === reference && request.ministry === ministry,
   );
   if (!existing) throw new Error("Request was not found.");
-  if (existing.status !== "pending")
-    throw new Error("Only pending requests can be edited.");
-  validateRequest(input, state.catalog);
+  if (existing.status !== "backlog")
+    throw new Error("Only backlog requests can be edited.");
+  validateRequest(input, state.catalog, existing);
   const request: MinistryRequest = {
     ...copyRequestInput(input),
     id: existing.id,
@@ -558,6 +670,7 @@ export function updatePublicRequest(
     status: existing.status,
     createdAt: existing.createdAt,
     updatedAt: nowIso(),
+    ...(existing.lifecycle ? { lifecycle: { ...existing.lifecycle } } : {}),
     ...(existing.privateNotes ? { privateNotes: existing.privateNotes } : {}),
     ...(existing.trackingCodeHash
       ? { trackingCodeHash: existing.trackingCodeHash }
@@ -601,10 +714,9 @@ export function publicProjection(
     task: task
       ? {
           status: task.status,
-          progress: task.progress,
           department: task.department,
           subTeam: task.subTeam,
-          completedAt: task.completedAt,
+          ...(task.lifecycle ? { lifecycle: { ...task.lifecycle } } : {}),
         }
       : null,
   };
@@ -620,10 +732,13 @@ export function publicRequest(request: MinistryRequest): PublicRequest {
   return safeRequest;
 }
 
-function makeRequestTask(request: MinistryRequest, catalog: Catalog): Task {
+function makeRequestTask(
+  request: MinistryRequest,
+  catalog: Catalog,
+  createdAt: string,
+): Task {
   const service = catalog.services.find((item) => item.id === request.service);
   if (!service) throw new Error("The request service is no longer available.");
-  const createdAt = nowIso();
   return {
     id: makeId("task"),
     requestId: request.id,
@@ -632,12 +747,13 @@ function makeRequestTask(request: MinistryRequest, catalog: Catalog): Task {
     service: request.service,
     instructions: request.instructions,
     notes: request.notes,
+    ...(request.airedDates ? { airedDates: [...request.airedDates] } : {}),
     department: service.department,
     subTeam: service.subTeam,
     status: "pending",
-    progress: 0,
     dueAt: request.dueAt,
     createdAt,
+    ...(request.lifecycle ? { lifecycle: { ...request.lifecycle } } : {}),
     privateNotes: [...(request.privateNotes ?? [])],
   };
 }
@@ -659,7 +775,6 @@ function makeInternalTask(input: InternalTaskInput, catalog: Catalog): Task {
     dueAt: input.dueAt,
     id: makeId("task"),
     status: "pending",
-    progress: 0,
     createdAt: nowIso(),
     privateNotes: [],
   };
@@ -693,7 +808,15 @@ function saveMinistry(
   const previousKey = normalizedName(previous);
   return {
     ...state,
-    catalog: { ...state.catalog, ministries },
+    catalog: {
+      ...state.catalog,
+      ministries,
+      ...(state.catalog.disabledMinistries ? {
+        disabledMinistries: state.catalog.disabledMinistries.map((item) =>
+          normalizedName(item) === previousKey ? nextName : item,
+        ),
+      } : {}),
+    },
     requests: state.requests.map((request) =>
       normalizedName(request.ministry) === previousKey
         ? { ...request, ministry: nextName }
@@ -701,10 +824,26 @@ function saveMinistry(
     ),
     tasks: state.tasks.map((task) =>
       normalizedName(task.ministry) === previousKey
-        ? { ...withoutLegacyTaskPriority(task), ministry: nextName }
+        ? { ...withoutRemovedTaskFields(task), ministry: nextName }
         : task,
     ),
   };
+}
+
+function setMinistryEnabled(
+  state: WorkspaceState,
+  name: string,
+  enabled: boolean,
+): WorkspaceState {
+  const ministry = state.catalog.ministries.find(
+    (item) => normalizedName(item) === normalizedName(name),
+  );
+  if (!ministry) throw new Error("The ministry was not found.");
+  const disabledMinistries = (state.catalog.disabledMinistries ?? []).filter(
+    (item) => normalizedName(item) !== normalizedName(ministry),
+  );
+  if (!enabled) disabledMinistries.push(ministry);
+  return { ...state, catalog: { ...state.catalog, disabledMinistries } };
 }
 
 function deleteMinistry(state: WorkspaceState, name: string): WorkspaceState {
@@ -717,14 +856,19 @@ function deleteMinistry(state: WorkspaceState, name: string): WorkspaceState {
     state.requests.some((request) => normalizedName(request.ministry) === key) ||
     state.tasks.some((task) => normalizedName(task.ministry) === key)
   )
-    throw new Error("This ministry is in use by a request or task and cannot be deleted.");
+    throw new Error("This ministry is in use by a request or task and cannot be deleted. Switch it off instead.");
   if (state.catalog.ministries.length === 1)
-    throw new Error("At least one ministry must remain available.");
+    throw new Error("At least one ministry must remain in the catalog. You can switch it off instead.");
   return {
     ...state,
     catalog: {
       ...state.catalog,
       ministries: state.catalog.ministries.filter((item) => item !== ministry),
+      ...(state.catalog.disabledMinistries ? {
+        disabledMinistries: state.catalog.disabledMinistries.filter(
+          (item) => normalizedName(item) !== key,
+        ),
+      } : {}),
     },
   };
 }
@@ -732,8 +876,13 @@ function deleteMinistry(state: WorkspaceState, name: string): WorkspaceState {
 function saveService(state: WorkspaceState, input: unknown): WorkspaceState {
   validateServiceInput(input, state.catalog);
   const service = input as Catalog["services"][number];
-  const normalized = { ...service, id: service.id.trim(), name: service.name.trim() };
-  const existing = state.catalog.services.find((item) => item.id === normalized.id);
+  const existing = state.catalog.services.find((item) => item.id === service.id.trim());
+  const normalized = {
+    ...service,
+    id: service.id.trim(),
+    name: service.name.trim(),
+    enabled: service.enabled ?? existing?.enabled ?? true,
+  };
   if (
     state.catalog.services.some(
       (item) =>
@@ -757,7 +906,7 @@ function deleteService(state: WorkspaceState, serviceId: string): WorkspaceState
     state.requests.some((request) => request.service === serviceId) ||
     state.tasks.some((task) => task.service === serviceId)
   )
-    throw new Error("This service is in use by a request or task and cannot be deleted.");
+    throw new Error("This request type is in use by a request or task and cannot be deleted. Switch it off instead.");
   return {
     ...state,
     catalog: {
@@ -845,7 +994,7 @@ function saveDepartment(
     ? state.tasks.map((task) =>
         task.department === department.id
           ? {
-              ...withoutLegacyTaskPriority(task),
+              ...withoutRemovedTaskFields(task),
               subTeam: renames[task.subTeam] ?? task.subTeam,
             }
           : task,
@@ -922,21 +1071,97 @@ function inviteMember(state: WorkspaceState, input: unknown): WorkspaceState {
   };
 }
 
+function selectedMembers(state: WorkspaceState, userIds: string[]): Member[] {
+  return userIds.map((id) => {
+    const member = state.users.find((item) => item.id === id);
+    if (!member) throw new Error("A selected member was not found.");
+    return member;
+  });
+}
+
+function deleteMembers(
+  state: WorkspaceState,
+  user: Leader,
+  userIds: string[],
+): WorkspaceState {
+  const members = selectedMembers(state, userIds);
+  if (members.some((member) => member.id === user.id))
+    throw new Error("You cannot delete your own Cell 0 admin account.");
+  const removedIds = new Set(userIds);
+  return {
+    ...state,
+    users: state.users.filter((member) => !removedIds.has(member.id)),
+    activities: appendActivity(
+      state,
+      `${members.length} workspace ${members.length === 1 ? "member" : "members"} removed.`,
+      "cell-0",
+      "access",
+    ),
+  };
+}
+
+function moveMembers(
+  state: WorkspaceState,
+  user: Leader,
+  userIds: string[],
+  department: string,
+  groups: string[],
+): WorkspaceState {
+  const members = selectedMembers(state, userIds);
+  if (members.some((member) => member.id === user.id))
+    throw new Error("You cannot move your own Cell 0 admin account with a bulk action.");
+  return userIds.reduce(
+    (next, userId) => updateMember(next, user, userId, { department, groups }),
+    state,
+  );
+}
+
 function updateMember(
   state: WorkspaceState,
   user: Leader,
   userId: string,
   changes: unknown,
+  createGroupsInput?: unknown,
 ): WorkspaceState {
-  validateMemberChanges(changes, state.catalog);
+  const createGroups = validateCreateGroups(createGroupsInput);
+  validateGroupAssignment(changes, createGroups);
+  validateMemberChanges(changes, state.catalog, createGroups.length > 0);
   const target = state.users.find((member) => member.id === userId);
   if (!target) throw new Error("The member was not found.");
   const value = changes as Partial<
     Pick<Member, "name" | "duty" | "department" | "groups" | "isLeader" | "approved">
   >;
   const department = value.department ?? target.department;
-  const groups = value.groups ?? target.groups;
-  requireValidGroups(state.catalog, department, groups);
+  const departmentDefinition = state.catalog.departments.find(
+    (item) => item.id === department,
+  );
+  if (!departmentDefinition)
+    throw new Error("Choose a valid department.");
+  const canonicalGroups = new Map<string, string>();
+  const newGroupLabels: string[] = [];
+  for (const requested of createGroups) {
+    const key = normalizedName(requested);
+    const existing = departmentDefinition.groups.find(
+      (group) => normalizedName(group) === key,
+    );
+    const canonical = existing ?? requested;
+    canonicalGroups.set(key, canonical);
+    if (!existing) newGroupLabels.push(canonical);
+  }
+  const groups = (value.groups ?? target.groups).map(
+    (group) => canonicalGroups.get(normalizedName(group)) ?? group,
+  );
+  const nextDepartment = {
+    ...departmentDefinition,
+    groups: [...departmentDefinition.groups, ...newGroupLabels],
+  };
+  const nextCatalog: Catalog = {
+    ...state.catalog,
+    departments: state.catalog.departments.map((item) =>
+      item.id === department ? nextDepartment : item,
+    ),
+  };
+  requireValidGroups(nextCatalog, department, groups);
   if (
     target.id === user.id &&
     (value.approved === false ||
@@ -955,6 +1180,7 @@ function updateMember(
   };
   return {
     ...state,
+    catalog: nextCatalog,
     users: state.users.map((member) =>
       member.id === target.id ? updated : member,
     ),
@@ -981,15 +1207,19 @@ export function applyAction(
         (item) => item.id === action.requestId,
       );
       if (!request) throw new Error("Request was not found.");
-      if (request.status !== "pending")
-        throw new Error("Only pending requests can be approved.");
-      const task = makeRequestTask(request, state.catalog);
-      const updated = {
+      if (request.status !== "backlog" && request.status !== "rejected")
+        throw new Error("Only backlog or rejected requests can be approved.");
+      if (request.taskId || state.tasks.some((task) => task.requestId === request.id))
+        throw new Error("This request already has an assigned task.");
+      const timestamp = nowIso();
+      const approvedRequest: MinistryRequest = {
         ...request,
-        status: "approved" as const,
-        updatedAt: nowIso(),
-        taskId: task.id,
+        status: "approved",
+        updatedAt: timestamp,
+        lifecycle: recordMilestone(request.lifecycle, "approvedAt", timestamp),
       };
+      const task = makeRequestTask(approvedRequest, state.catalog, timestamp);
+      const updated = { ...approvedRequest, taskId: task.id };
       const text = `${request.reference} approved and routed to ${task.department}.`;
       return {
         ...state,
@@ -1018,13 +1248,15 @@ export function applyAction(
         (item) => item.id === action.requestId,
       );
       if (!request) throw new Error("Request was not found.");
-      if (request.status !== "pending")
-        throw new Error("Only pending requests can be rejected.");
+      if (request.status !== "backlog")
+        throw new Error("Only backlog requests can be rejected.");
+      const timestamp = nowIso();
       const updated = {
         ...request,
         status: "rejected" as const,
         rejectionReason: action.reason.trim(),
-        updatedAt: nowIso(),
+        updatedAt: timestamp,
+        lifecycle: recordMilestone(request.lifecycle, "rejectedAt", timestamp),
       };
       const text = `${request.reference} rejected: ${updated.rejectionReason}`;
       return {
@@ -1041,44 +1273,50 @@ export function applyAction(
       if (!task) throw new Error("Task was not found.");
       if (!isCell0Leader(user) && task.department !== user.department)
         throw new Error("You can only edit tasks in your department.");
-      let progress = action.progress ?? task.progress;
-      let status = action.status ?? task.status;
-      if (action.progress === 100 || action.status === "completed") {
-        progress = 100;
-        status = "completed";
-      } else if (action.status === "pending") {
-        progress = 0;
-        status = "pending";
-      } else if (action.status === "in-progress") {
-        if (action.progress === undefined && progress === 100) progress = 75;
-        if (action.progress === undefined && progress === 0) progress = 25;
-        status = "in-progress";
-      } else if (action.progress !== undefined) {
-        status = progress === 0 ? "pending" : "in-progress";
-      }
-      const completedAt =
-        status === "completed" ? (task.completedAt ?? nowIso()) : undefined;
+      const status = action.status;
+      const statusChanged = task.status !== status;
+      const milestone = statusChanged
+        ? status === "in-progress"
+          ? "inProgressAt"
+          : status === "completed"
+            ? "completedAt"
+            : undefined
+        : undefined;
+      const request = task.requestId
+        ? state.requests.find((item) => item.id === task.requestId)
+        : undefined;
+      const lifecycle = milestone
+        ? recordMilestone({ ...request?.lifecycle, ...task.lifecycle }, milestone, nowIso())
+        : task.lifecycle;
       const updated: Task = {
-        ...withoutLegacyTaskPriority(task),
-        progress,
+        ...withoutRemovedTaskFields(task),
         status,
-        ...(completedAt ? { completedAt } : { completedAt: undefined }),
+        ...(lifecycle ? { lifecycle } : {}),
       };
-      const justCompleted =
-        task.status !== "completed" && updated.status === "completed";
-      const text = justCompleted
-        ? `${updated.title} completed.`
-        : `${updated.title} updated to ${updated.progress}% complete.`;
-      return {
+      const nextState = {
         ...state,
         tasks: state.tasks.map((item) =>
           item.id === task.id ? updated : item,
         ),
+        requests: milestone && request
+          ? state.requests.map((item) => item.id === request.id
+            ? { ...item, lifecycle: { ...item.lifecycle, ...lifecycle } }
+            : item)
+          : state.requests,
+      };
+      if (!statusChanged) return nextState;
+      const justCompleted = updated.status === "completed";
+      const statusLabel = updated.status === "in-progress" ? "in progress" : updated.status;
+      const text = justCompleted
+        ? `${updated.title} completed.`
+        : `${updated.title} status changed to ${statusLabel}.`;
+      return {
+        ...nextState,
         activities: appendActivities(
           state,
           text,
           ["cell-0", updated.department],
-          justCompleted ? "completed" : "progress",
+          justCompleted ? "completed" : "status",
           updated.id,
         ),
         notifications: justCompleted
@@ -1137,7 +1375,7 @@ export function applyAction(
         tasks: state.tasks.map((item) =>
           item.id === task.id
             ? {
-                ...withoutLegacyTaskPriority(item),
+                ...withoutRemovedTaskFields(item),
                 privateNotes: [...item.privateNotes, note],
               }
             : item,
@@ -1169,27 +1407,51 @@ export function applyAction(
     case "save-ministry":
       requireLeader(user, "manage request options");
       return saveMinistry(state, action.name, action.previousName);
+    case "set-ministry-enabled":
+      requireLeader(user, "manage request options");
+      return setMinistryEnabled(state, action.name, action.enabled);
     case "delete-ministry":
       requireLeader(user, "manage request options");
       return deleteMinistry(state, action.name);
+    case "delete-ministries":
+      requireLeader(user, "manage request options");
+      return action.names.reduce(deleteMinistry, state);
     case "save-service":
       requireLeader(user, "manage request options");
       return saveService(state, action.service);
     case "delete-service":
       requireLeader(user, "manage request options");
       return deleteService(state, action.serviceId);
+    case "delete-services":
+      requireLeader(user, "manage request options");
+      return action.serviceIds.reduce(deleteService, state);
     case "save-department":
       requireCell0(user, "manage departments");
       return saveDepartment(state, action.department, action.groupRenames);
     case "delete-department":
       requireCell0(user, "manage departments");
       return deleteDepartment(state, action.departmentId);
+    case "delete-departments":
+      requireCell0(user, "manage departments");
+      return action.departmentIds.reduce(deleteDepartment, state);
+    case "delete-members":
+      requireCell0(user, "manage members");
+      return deleteMembers(state, user, action.userIds);
+    case "move-members":
+      requireCell0(user, "manage members");
+      return moveMembers(state, user, action.userIds, action.department, action.groups);
     case "invite-member":
       requireCell0(user, "invite members");
       return inviteMember(state, action.input);
     case "update-member":
       requireCell0(user, "manage members");
-      return updateMember(state, user, action.userId, action.changes);
+      return updateMember(
+        state,
+        user,
+        action.userId,
+        action.changes,
+        action.createGroups,
+      );
     case "read-notifications":
       return {
         ...state,

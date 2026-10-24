@@ -47,6 +47,9 @@ type FieldKey =
   | "dueAt";
 type FieldErrors = Partial<Record<FieldKey, string>>;
 
+const changedMinistryMessage =
+  "The ministry on this request has changed. Search with your private access code again to refresh its details before saving.";
+
 const fieldMessageId = (controlId: string, kind: "hint" | "error") =>
   `${controlId}-${kind}`;
 
@@ -207,13 +210,23 @@ function safeApiError(error: unknown, action: "track" | "save" | "send") {
   return "We couldn’t send your request. Please try again.";
 }
 
+function isRequestReference(value: string) {
+  return /^MOC-\d{4}-\d{4,}$/i.test(value.replace(/\s/g, ""));
+}
+
 function validateDraft(
   draft: RequestInput,
   service?: Service,
+  choices?: { services: Service[]; ministries: string[] },
 ): { input?: RequestInput; fieldErrors: FieldErrors } {
   const fieldErrors: FieldErrors = {};
   if (!draft.service) fieldErrors.service = "Choose a request type.";
+  else if (choices && !choices.services.some((item) => item.id === draft.service))
+    fieldErrors.service =
+      "This request type is no longer available. Choose another.";
   if (!draft.ministry) fieldErrors.ministry = "Choose a ministry.";
+  else if (choices && !choices.ministries.includes(draft.ministry))
+    fieldErrors.ministry = "This ministry is no longer available. Choose another.";
   if (!draft.title.trim())
     fieldErrors.title = "Add a short title for this request.";
   if (!draft.instructions.trim())
@@ -296,7 +309,9 @@ export default function Portal() {
   const catalogQuery = useQuery({
     queryKey: ["public-catalog"],
     queryFn: () => api<Catalog>("/api/catalog"),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 1000,
+    refetchInterval: 30 * 1000,
+    refetchOnWindowFocus: "always",
   });
 
   const services = catalogQuery.data?.services ?? [];
@@ -308,11 +323,42 @@ export default function Portal() {
     [catalogQuery.data?.ministries],
   );
   const departments = catalogQuery.data?.departments ?? [];
+  const availableMinistries = ministries.filter(
+    (ministry) => !catalogQuery.data?.disabledMinistries?.includes(ministry),
+  );
+  const availableServices = services
+    .filter((service) => service.enabled !== false)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const editableMinistries = ministries.filter(
+    (ministry) =>
+      !catalogQuery.data?.disabledMinistries?.includes(ministry) ||
+      ministry === tracking?.request.ministry,
+  );
+  if (tracking && !editableMinistries.includes(tracking.request.ministry))
+    editableMinistries.push(tracking.request.ministry);
+  const editableServices = services
+    .filter(
+      (service) =>
+        service.enabled !== false || service.id === tracking?.request.service,
+    )
+    .sort((a, b) => a.name.localeCompare(b.name));
   const catalogAvailable =
     !!catalogQuery.data &&
-    ministries.length > 0 &&
-    services.length > 0 &&
+    availableMinistries.length > 0 &&
+    availableServices.length > 0 &&
     departments.length > 0;
+  const editCatalogReady =
+    !!catalogQuery.data &&
+    editableMinistries.length > 0 &&
+    editableServices.length > 0 &&
+    departments.length > 0;
+  const editMinistryCurrent =
+    !!tracking && ministries.includes(tracking.request.ministry);
+  const editCatalogAvailable = editCatalogReady && editMinistryCurrent;
+  const editFormError =
+    tracking && catalogQuery.data && !editMinistryCurrent
+      ? changedMinistryMessage
+      : formError;
   const catalogStatus: CatalogStatus | null = catalogAvailable
     ? null
     : catalogQuery.isLoading || catalogQuery.isFetching
@@ -322,16 +368,78 @@ export default function Portal() {
         : catalogQuery.data
           ? "empty"
           : "loading";
-  const orderedServices = useMemo(
-    () => services.slice().sort((a, b) => a.name.localeCompare(b.name)),
-    [services],
-  );
+  const editCatalogStatus: CatalogStatus | null = editCatalogReady
+    ? null
+    : catalogQuery.isLoading || catalogQuery.isFetching
+      ? "loading"
+      : catalogQuery.isError
+        ? "error"
+        : catalogQuery.data
+          ? "empty"
+          : "loading";
   const selectedCreateService = services.find(
     (service) => service.id === createForm.service,
   );
   const selectedEditService = services.find(
     (service) => service.id === editForm.service,
   );
+
+  useEffect(() => {
+    const catalog = catalogQuery.data;
+    if (!catalog) return;
+    const serviceUnavailable =
+      !!createForm.service &&
+      !catalog.services.some(
+        (service) =>
+          service.id === createForm.service && service.enabled !== false,
+      );
+    const ministryUnavailable =
+      !!createForm.ministry &&
+      (!catalog.ministries.includes(createForm.ministry) ||
+        !!catalog.disabledMinistries?.includes(createForm.ministry));
+    if (!serviceUnavailable && !ministryUnavailable) return;
+    setCreateForm((previous) => ({
+      ...previous,
+      ...(serviceUnavailable ? { service: "", airedDates: [] } : {}),
+      ...(ministryUnavailable ? { ministry: "" } : {}),
+    }));
+    setCreateFieldErrors((previous) => {
+      const next = { ...previous };
+      if (serviceUnavailable) {
+        next.service = "This request type is no longer available. Choose another.";
+        delete next.airedDates;
+      }
+      if (ministryUnavailable)
+        next.ministry = "This ministry is no longer available. Choose another.";
+      return next;
+    });
+    setCreateStep(1);
+  }, [catalogQuery.data, createForm.service, createForm.ministry]);
+
+  useEffect(() => {
+    const catalog = catalogQuery.data;
+    if (screen !== "track" || !catalog || tracking?.request.status !== "backlog")
+      return;
+    const serviceUnavailable =
+      !!editForm.service &&
+      !catalog.services.some(
+        (service) =>
+          service.id === editForm.service &&
+          (service.enabled !== false || service.id === tracking.request.service),
+      );
+    if (serviceUnavailable) {
+      setEditForm((previous) => ({ ...previous, service: "", airedDates: [] }));
+      setEditFieldErrors((previous) => {
+        const next = {
+          ...previous,
+          service: "This request type is no longer available. Choose another.",
+        };
+        delete next.airedDates;
+        return next;
+      });
+      setEditSaved(false);
+    }
+  }, [catalogQuery.data, editForm.service, screen, tracking]);
   const createShortNotice =
     !!createForm.dueAt &&
     new Date(createForm.dueAt).getTime() > Date.now() &&
@@ -465,6 +573,7 @@ export default function Portal() {
     const { input, fieldErrors } = validateDraft(
       createForm,
       selectedCreateService,
+      { services: availableServices, ministries: availableMinistries },
     );
     setCreateFieldErrors(fieldErrors);
     if (!input) {
@@ -483,7 +592,10 @@ export default function Portal() {
   };
 
   const validateCreateForm = () => {
-    const { fieldErrors } = validateDraft(createForm, selectedCreateService);
+    const { fieldErrors } = validateDraft(createForm, selectedCreateService, {
+      services: availableServices,
+      ministries: availableMinistries,
+    });
     setCreateFieldErrors(fieldErrors);
     if (Object.keys(fieldErrors).length > 0) {
       setFormError("Check the highlighted fields and try again.");
@@ -517,7 +629,7 @@ export default function Portal() {
     event.preventDefault();
     if (
       !tracking ||
-      tracking.request.status !== "pending" ||
+      tracking.request.status !== "backlog" ||
       !activeTrackingCode
     ) {
       setFormError(
@@ -525,7 +637,14 @@ export default function Portal() {
       );
       return;
     }
-    const { input, fieldErrors } = validateDraft(editForm, selectedEditService);
+    if (!editMinistryCurrent) {
+      setFormError(changedMinistryMessage);
+      return;
+    }
+    const { input, fieldErrors } = validateDraft(editForm, selectedEditService, {
+      services: editableServices,
+      ministries: editableMinistries,
+    });
     setEditFieldErrors(fieldErrors);
     if (!input) {
       setFormError("Check the highlighted fields and try again.");
@@ -558,6 +677,12 @@ export default function Portal() {
     event.preventDefault();
     const code = trackingCodeInput.trim();
     setTrackingCodeInput(code);
+    if (isRequestReference(code)) {
+      setTrackError(
+        "That looks like a request reference. Enter the private access code from your submission receipt; references can’t be used to view or edit a request.",
+      );
+      return;
+    }
     beginLookup(code);
   };
 
@@ -736,7 +861,7 @@ export default function Portal() {
                   <h2>We’ve got it.</h2>
                   <p className="success-copy">
                     Your request is in. Save this code to check in or edit while
-                    it’s pending.
+                    it’s awaiting review.
                   </p>
                   {formError && (
                     <div className="portal-error" role="alert">
@@ -821,8 +946,8 @@ export default function Portal() {
                   </h2>
                   <RequestForm
                     form={createForm}
-                    ministries={ministries}
-                    services={orderedServices}
+                    ministries={availableMinistries}
+                    services={availableServices}
                     selectedService={selectedCreateService}
                     catalogStatus={catalogStatus}
                     catalogRetrying={catalogQuery.isFetching}
@@ -870,12 +995,6 @@ export default function Portal() {
               <span aria-hidden="true" />
             </header>
             <section className="track-content-wrap">
-              {trackError && (
-                <div className="portal-error" role="alert">
-                  <CircleAlert size={16} aria-hidden="true" />
-                  <span>{trackError}</span>
-                </div>
-              )}
               <form className="track-form" onSubmit={trackRequest}>
                 <Field
                   label="Private access code"
@@ -888,6 +1007,11 @@ export default function Portal() {
                     name="tracking-code"
                     required
                     value={trackingCodeInput}
+                    aria-invalid={
+                      isRequestReference(trackingCodeInput)
+                        ? "true"
+                        : undefined
+                    }
                     onChange={(event) => {
                       lookupSequence.current += 1;
                       setTrackingCodeInput(event.target.value);
@@ -904,7 +1028,11 @@ export default function Portal() {
                     autoCapitalize="characters"
                     spellCheck={false}
                     placeholder="MOC-XXXXXX-XXXXXX-XXXXXX-XXXXXX"
-                    aria-describedby={fieldDescribedBy("tracking-code")}
+                    aria-describedby={
+                      trackError
+                        ? "tracking-code-hint tracking-code-error"
+                        : "tracking-code-hint"
+                    }
                   />
                 </Field>
                 <button
@@ -915,6 +1043,23 @@ export default function Portal() {
                   {trackMutation.isPending ? "Checking…" : "Search"}
                 </button>
               </form>
+              <p
+                className="portal-field-hint tracking-code-hint"
+                id="tracking-code-hint"
+              >
+                Use the private code from your submission receipt. A request
+                reference (for example, MOC-2026-0001) can’t be used.
+              </p>
+              {trackError && (
+                <div
+                  className="portal-error track-error"
+                  id="tracking-code-error"
+                  role="alert"
+                >
+                  <CircleAlert size={16} aria-hidden="true" />
+                  <span>{trackError}</span>
+                </div>
+              )}
               {tracking && (
                 <div className="track-content" aria-live="polite">
                   <TrackingSummary
@@ -922,12 +1067,12 @@ export default function Portal() {
                     services={services}
                     departments={departments}
                   />
-                  {tracking.request.status === "pending" ? (
+                  {tracking.request.status === "backlog" ? (
                     <div className="edit-section">
                       <div className="edit-heading">
                         <h2>Make changes</h2>
                         <span className="edit-available">
-                          You can edit while pending
+                          You can edit before review
                         </span>
                       </div>
                       {editSaved && (
@@ -935,19 +1080,22 @@ export default function Portal() {
                           <Check size={16} /> Changes saved.
                         </p>
                       )}
-                      {formError && (
+                      {editFormError && (
                         <div className="portal-error" role="alert">
                           <CircleAlert size={16} aria-hidden="true" />
-                          <span>{formError}</span>
+                          <span>{editFormError}</span>
                         </div>
                       )}
                       {activeTrackingCode ? (
                         <RequestForm
                           form={editForm}
-                          ministries={ministries}
-                          services={orderedServices}
+                          ministries={editableMinistries}
+                          services={editableServices}
                           selectedService={selectedEditService}
-                          canSubmit
+                          catalogStatus={editCatalogStatus}
+                          catalogRetrying={catalogQuery.isFetching}
+                          canSubmit={editCatalogAvailable}
+                          onRetryCatalog={() => void catalogQuery.refetch()}
                           shortNotice={editShortNotice}
                           isEditing
                           busy={editMutation.isPending}
@@ -1047,7 +1195,7 @@ function RequestForm({
               ? "Loading request options…"
               : catalogStatus === "error"
                 ? "We couldn’t load request options."
-                : "No request options are available yet."}
+                : "Requests are temporarily unavailable. Please try again later."}
           </span>
           {catalogStatus !== "loading" && onRetryCatalog && (
             <button
@@ -1371,7 +1519,7 @@ function RequestForm({
           <button
             className="button button-primary button-lg"
             type="submit"
-            disabled={busy || (!isEditing && !canSubmit)}
+            disabled={busy || !canSubmit}
           >
             {busy
               ? isEditing
@@ -1414,14 +1562,12 @@ function TrackingSummary({
   departments: Catalog["departments"];
 }) {
   const { request, task } = result;
-  const pending = request.status === "pending";
   const rejected = request.status === "rejected";
   const approved = request.status === "approved";
   const taskCompleted = task?.status === "completed";
-  const progress = task?.progress ?? 0;
   const department = task ? departmentLabel(task.department, departments) : "";
 
-  let statusClass = "status-pending";
+  let statusClass = "status-awaiting-review";
   let statusLabel = "Awaiting review";
   if (rejected) {
     statusClass = "status-rejected";
@@ -1451,55 +1597,27 @@ function TrackingSummary({
         <span>Due {prettyDate(request.dueAt)}</span>
       </div>
       {request.status === "rejected" ? (
-        <>
-          <div className="rejection-box">
-            <strong>Reason from the team</strong>
-            <p>
-              {request.rejectionReason ||
-                "The team was unable to approve this request."}
-            </p>
-          </div>
-          <div className="progress-meta">
-            <span>Work progress</span>
-            <strong>Closed</strong>
-          </div>
-        </>
+        <div className="rejection-box">
+          <strong>Reason from the team</strong>
+          <p>
+            {request.rejectionReason ||
+              "The team was unable to approve this request."}
+          </p>
+        </div>
       ) : (
-        <>
-          <div className="progress-meta">
-            <span>{pending ? "Work progress" : "Progress"}</span>
+        department &&
+        task && (
+          <div className="result-assignment">
+            <span>ROUTED TO</span>
             <strong>
-              {task
-                ? progress === 100
-                  ? "Complete"
-                  : `${progress}% complete`
-                : "Not started"}
+              {department} · {task.subTeam}
             </strong>
           </div>
-          <div
-            className="progress-track"
-            data-complete={taskCompleted ? "true" : undefined}
-            role="progressbar"
-            aria-valuenow={progress}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label="Work progress"
-          >
-            <span style={{ width: `${progress}%` }} />
-          </div>
-          {department && task && (
-            <div className="result-assignment">
-              <span>ROUTED TO</span>
-              <strong>
-                {department} · {task.subTeam}
-              </strong>
-            </div>
-          )}
-        </>
+        )
       )}
-      {task?.completedAt && (
+      {taskCompleted && task?.lifecycle?.completedAt && (
         <p className="completed-note">
-          Completed {prettyDate(task.completedAt)}.
+          Completed {prettyDate(task.lifecycle.completedAt)}.
         </p>
       )}
     </section>

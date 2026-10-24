@@ -87,10 +87,13 @@ const PAIRS = [
   ["--dept-visual-fg", "--dept-visual-bg", 4.5, "Visual Media mark"],
   ["--dept-cell0-fg", "--dept-cell0-bg", 4.5, "Cell 0 mark"],
 
+  ...["red", "orange", "cyan", "indigo", "lime", "slate"].map((color) => [
+    `--palette-${color}-fg`, `--palette-${color}-bg`, 4.5, `${color} department badge`,
+  ]),
+
   // Non-text contrast: control edges and meaningful graphics
   ["--line-control", "--surface", 3, "input/button edge on surface"],
   ["--line-control", "--canvas", 3, "input/button edge on canvas"],
-  ["--brand-fill", "--neutral-200", 3, "progress fill vs track"],
 ];
 
 const tokens = readTokens(readFileSync(themePath, "utf8"));

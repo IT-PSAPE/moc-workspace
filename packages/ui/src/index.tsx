@@ -4,6 +4,7 @@ import {
   isValidElement,
   useId,
   type ButtonHTMLAttributes,
+  type ComponentProps,
   type CSSProperties,
   type ReactElement,
   type ReactNode,
@@ -11,9 +12,9 @@ import {
 import { Button as BaseButton } from "@base-ui/react/button";
 import { Dialog } from "@base-ui/react/dialog";
 import { X } from "lucide-react";
-import "./inline-edit.css";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  ref?: ComponentProps<"button">["ref"];
   variant?: "primary" | "secondary" | "ghost" | "danger";
   size?: "sm" | "md";
 };
@@ -40,6 +41,8 @@ export function Modal({
   className = "",
   side,
   drawerWidth,
+  initialFocus,
+  finalFocus,
 }: {
   open: boolean;
   onClose: () => void;
@@ -48,6 +51,8 @@ export function Modal({
   className?: string;
   side?: "left" | "right";
   drawerWidth?: number;
+  initialFocus?: ComponentProps<typeof Dialog.Popup>["initialFocus"];
+  finalFocus?: ComponentProps<typeof Dialog.Popup>["finalFocus"];
 }) {
   return (
     <Dialog.Root
@@ -67,6 +72,8 @@ export function Modal({
               : undefined
           }
           aria-describedby={undefined}
+          initialFocus={initialFocus}
+          finalFocus={finalFocus}
         >
           <div className="modal-heading">
             <Dialog.Title className="modal-title">{title}</Dialog.Title>
@@ -81,15 +88,8 @@ export function Modal({
   );
 }
 
-export function Badge({
-  children,
-  tone = "neutral",
-}: {
-  children: ReactNode;
-  tone?: "neutral" | "green" | "gold" | "red" | "brand";
-}) {
-  return <span className={`badge badge-${tone}`}>{children}</span>;
-}
+export { Badge } from "./Badge";
+export type { BadgeColor, BadgeProps, BadgeTone } from "./Badge";
 
 export function Field({
   label,
@@ -162,13 +162,18 @@ export function Field({
 
 export { Dropdown } from "./dropdown";
 export { Tooltip, TooltipProvider } from "./tooltip";
-export { InlineEditCell } from "./InlineEditCell";
-export type {
-  InlineEditCellEditorArgs,
-  InlineEditCellProps,
-} from "./InlineEditCell";
 export { SegmentedControl } from "./SegmentedControl";
 export type {
   SegmentedControlOption,
   SegmentedControlProps,
 } from "./SegmentedControl";
+export { CellCombobox } from "./CellCombobox";
+export type { CellComboboxOption, CellComboboxProps } from "./CellCombobox";
+export { EditableTextCell } from "./EditableTextCell";
+export type { EditableTextCellProps } from "./EditableTextCell";
+export { DataTable } from "./DataTable";
+export type { DataTableColumnDef, DataTableColumnMeta, DataTableRootProps, DataTableBodyProps, DataTableSelectionBarProps, DataTableInstance } from "./DataTable";
+export { Checkbox } from "./Checkbox";
+export { Switch } from "./Switch";
+export type { SwitchProps } from "./Switch";
+export { Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, TableCaption } from "./table";

@@ -1,23 +1,26 @@
 import { Tooltip as BaseTooltip } from "@base-ui/react/tooltip";
-import type { ReactElement, ReactNode } from "react";
+import { useId, type ReactElement, type ReactNode } from "react";
 
 export function Tooltip({
   label,
   children,
+  side = "right",
 }: {
   label: ReactNode;
   children: ReactElement;
+  side?: "top" | "right" | "bottom" | "left";
 }) {
+  const id = useId();
   return (
     <BaseTooltip.Root>
-      <BaseTooltip.Trigger render={children} />
+      <BaseTooltip.Trigger render={children} aria-describedby={id} />
       <BaseTooltip.Portal>
         <BaseTooltip.Positioner
-          side="right"
+          side={side}
           sideOffset={8}
           className="tooltip-positioner"
         >
-          <BaseTooltip.Popup className="tooltip-popup">
+          <BaseTooltip.Popup id={id} role="tooltip" className="tooltip-popup">
             {label}
           </BaseTooltip.Popup>
         </BaseTooltip.Positioner>

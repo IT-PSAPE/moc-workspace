@@ -1,6 +1,6 @@
 /* ==========================================================================
    MOC shared primitives
-   Canonical buttons, inputs, badges, cards, tables, progress and dialogs.
+   Canonical buttons, inputs, badges, cards, tables and dialogs.
    Both apps import this after theme.css; app stylesheets layer on top.
    ========================================================================== */
 
@@ -383,32 +383,6 @@ button {
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
   box-shadow: none;
-}
-
-/* --------------------------------------------------------------------------
-   Progress — the recurring signal across departments, tasks and reports.
-   -------------------------------------------------------------------------- */
-
-.progress-track {
-  position: relative;
-  height: 6px;
-  border-radius: var(--radius-full);
-  background: var(--neutral-200);
-  overflow: hidden;
-}
-
-.progress-track > i,
-.progress-track > span {
-  display: block;
-  height: 100%;
-  border-radius: var(--radius-full);
-  background: var(--brand-fill);
-  transition: width var(--duration-slow) var(--ease-out);
-}
-
-.progress-track[data-complete="true"] > i,
-.progress-track[data-complete="true"] > span {
-  background: var(--success-solid);
 }
 
 /* --------------------------------------------------------------------------

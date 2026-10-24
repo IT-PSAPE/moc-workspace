@@ -256,6 +256,18 @@
   --dept-visual-fg: var(--color-utility-blue-700);
   --dept-cell0-bg: var(--brand-50);
   --dept-cell0-fg: var(--brand-700);
+  --palette-red-fg: #b42318;
+  --palette-red-bg: #fef3f2;
+  --palette-orange-fg: #9a3412;
+  --palette-orange-bg: #fff7ed;
+  --palette-cyan-fg: #155e75;
+  --palette-cyan-bg: #ecfeff;
+  --palette-indigo-fg: #3730a3;
+  --palette-indigo-bg: #eef2ff;
+  --palette-lime-fg: #3f6212;
+  --palette-lime-bg: #f7fee7;
+  --palette-slate-fg: #334155;
+  --palette-slate-bg: #f1f5f9;
   --paper: var(--surface);
   --space-0: 0;
   --space-1: 4px;

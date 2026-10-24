@@ -5,7 +5,7 @@ import { startUiTestApi, routeUiTestApi } from "./ui-test-server.mjs";
 
 const origin = "http://localhost:5173";
 const api = await startUiTestApi([origin]);
-const browser = await chromium.launch();
+const browser = await chromium.launch(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {});
 const output = "output/playwright";
 await mkdir(output, { recursive: true });
 try {
@@ -66,13 +66,12 @@ try {
           ...state.tasks[0],
           id: `chart-${index}-${taskIndex}`,
           status: "completed",
-          progress: 100,
-          completedAt: new Date(
+          lifecycle: { completedAt: new Date(
             now.getFullYear(),
             now.getMonth() - 7 + index,
             10,
             12,
-          ).toISOString(),
+          ).toISOString() },
         })),
       );
       await route.fulfill({ response, json: state });
@@ -192,10 +191,10 @@ try {
       await page.getByRole("dialog").locator(".calendar-task").first().click();
     } else await page.locator(".calendar-task").first().click();
     await page
-      .getByRole("heading", { name: "Deadline details", exact: true })
+      .getByRole("heading", { name: "Task details", exact: true })
       .waitFor();
     await shot("task-overview", page.getByRole("dialog"));
-    await page.getByRole("button", { name: /^Comments/ }).click();
+    assert.equal(await page.getByRole("button", { name: /^Comments/ }).count(), 0, "Comments follow details without tabs");
     await page
       .getByRole("textbox", { name: "Add a comment", exact: true })
       .fill(`Calendar comment at ${width}px`);
@@ -230,7 +229,7 @@ try {
     await shot("report-cards", page.locator(".report-metrics"));
     await noOverflow();
     await page.goto(`${origin}/requests`, { waitUntil: "networkidle" });
-    await page.locator(".request-row").first().click();
+    await page.locator(".request-row").getByRole("button", { name: /^Open / }).first().click();
     await page
       .getByRole("heading", { name: "Request details", exact: true })
       .waitFor();
@@ -249,7 +248,7 @@ try {
       .getByRole("button", { name: "Close dialog", exact: true })
       .click();
     await page.reload({ waitUntil: "networkidle" });
-    await page.locator(".request-row").first().click();
+    await page.locator(".request-row").getByRole("button", { name: /^Open / }).first().click();
     await page
       .getByText(`Request comment at ${width}px`, { exact: true })
       .waitFor();

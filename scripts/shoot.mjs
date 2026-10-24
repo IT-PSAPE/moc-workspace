@@ -379,25 +379,6 @@ function buildStates(sharedTrackingCode) {
     }
   });
 
-  add("shell-quick-guide", "shell", async ({ page, session, vp }) => {
-    await session.gotoWorkspace("/");
-    // Below 680px the sidebar is replaced by the mobile menu, so the guide is
-    // reached through there rather than from a sidebar entry.
-    const navTrigger = page.getByRole("button", { name: /Open navigation/i });
-    if (await navTrigger.isVisible().catch(() => false)) {
-      await navTrigger.click();
-      await page
-        .getByRole("heading", { name: /MOC Workspace/i })
-        .waitFor({ state: "visible", timeout: 8000 });
-    }
-    await page.getByRole("button", { name: /Quick guide/i }).click();
-    await page
-      .getByRole("heading", { name: /quick guide to MOC/i })
-      .waitFor({ state: "visible", timeout: 8000 });
-    await settle(page);
-    await shoot(page, vp, "shell-quick-guide", { clip: ".modal-panel" });
-  });
-
   add(
     "shell-mobile-nav-modal",
     "shell",
@@ -617,7 +598,7 @@ function buildStates(sharedTrackingCode) {
 
   add("requests-approve-dialog", "requests", async ({ page, session, vp }) => {
     await session.gotoWorkspace("/requests");
-    const row = page.locator(".request-row").first();
+    const row = page.locator(".request-row").getByRole("button", { name: /^Open / }).first();
     await row.waitFor({ state: "visible", timeout: 8000 });
     await row.click();
     await page
@@ -629,7 +610,7 @@ function buildStates(sharedTrackingCode) {
 
   add("requests-reject-dialog", "requests", async ({ page, session, vp }) => {
     await session.gotoWorkspace("/requests");
-    const row = page.locator(".request-row").first();
+    const row = page.locator(".request-row").getByRole("button", { name: /^Open / }).first();
     await row.waitFor({ state: "visible", timeout: 8000 });
     await row.click();
     await page
@@ -637,7 +618,7 @@ function buildStates(sharedTrackingCode) {
       .waitFor({ state: "visible", timeout: 8000 });
     await page.getByRole("button", { name: /Reject request/i }).click();
     await page
-      .getByRole("heading", { name: /Return request/i })
+      .getByRole("heading", { name: /^Reject request$/i })
       .waitFor({ state: "visible", timeout: 8000 });
     await settle(page);
     await shoot(page, vp, "requests-reject-dialog", { clip: ".modal-panel" });
@@ -803,100 +784,17 @@ function buildStates(sharedTrackingCode) {
     },
   );
 
-  add(
-    "settings-department-groups-drawer",
-    "settings",
-    async ({ page, session, vp }) => {
+  for (const department of ["Sound", "Design"]) {
+    add(`settings-${department.toLowerCase()}-groups`, "settings", async ({ page, session, vp }) => {
       await session.gotoWorkspace("/settings#departments");
-      const manageGroups = page.getByRole("button", {
-        name: /Manage .* groups for Sound/i,
-      });
-      await manageGroups.click();
-      await page
-        .getByRole("heading", { name: "Sound groups", exact: true })
-        .waitFor({ state: "visible", timeout: 8000 });
+      await page.getByRole("combobox", { name: `Edit ${department} groups`, exact: true }).click();
+      await page.getByRole("combobox", { name: `Search ${department} groups`, exact: true }).waitFor();
       await settle(page);
-      await shoot(page, vp, "settings-department-groups-drawer", {
-        clip: page.getByRole("dialog"),
+      await shoot(page, vp, `settings-${department.toLowerCase()}-groups`, {
+        clip: page.getByRole("dialog", { name: `Select ${department} groups`, exact: true }),
       });
-    },
-  );
-
-  add(
-    "settings-department-groups-design",
-    "settings",
-    async ({ page, session, vp }) => {
-      await session.gotoWorkspace("/settings#departments");
-      await page
-        .getByRole("button", { name: /Manage .* groups for Design/i })
-        .click();
-      await page
-        .getByRole("heading", { name: "Design groups", exact: true })
-        .waitFor({ state: "visible", timeout: 8000 });
-      await settle(page);
-      await shoot(page, vp, "settings-department-groups-design", {
-        clip: page.getByRole("dialog"),
-      });
-    },
-  );
-
-  add(
-    "settings-rename-group-dialog",
-    "settings",
-    async ({ page, session, vp }) => {
-      await session.gotoWorkspace("/settings#departments");
-      await page
-        .getByRole("button", { name: /Manage .* groups for Design/i })
-        .click();
-      await page
-        .getByRole("heading", { name: "Design groups", exact: true })
-        .waitFor({ state: "visible", timeout: 8000 });
-      const firstGroup = page
-        .getByRole("dialog")
-        .getByRole("row")
-        .nth(1)
-        .getByRole("button", { name: /^Actions for / });
-      const groupName = (await page
-        .getByRole("dialog")
-        .getByRole("row")
-        .nth(1)
-        .getByRole("rowheader")
-        .innerText())
-        .trim();
-      await firstGroup.click();
-      await page.getByRole("menuitem", { name: "Rename" }).click();
-      await page
-        .getByRole("heading", { name: "Rename group", exact: true })
-        .waitFor({ state: "visible", timeout: 8000 });
-      await page.getByLabel("Group name").waitFor({ state: "visible" });
-      if (!(await page.getByLabel("Group name").inputValue()).trim()) {
-        throw new Error(`The ${groupName} rename form did not retain its value`);
-      }
-      await settle(page);
-      await shoot(page, vp, "settings-rename-group-dialog", {
-        clip: page.getByRole("dialog").last(),
-      });
-    },
-  );
-
-  add(
-    "settings-add-group-dialog",
-    "settings",
-    async ({ page, session, vp }) => {
-      await session.gotoWorkspace("/settings#departments");
-      await page
-        .getByRole("button", { name: /Manage .* groups for Sound/i })
-        .click();
-      await page.getByRole("button", { name: "Add group" }).click();
-      await page
-        .getByRole("heading", { name: "Add group", exact: true })
-        .waitFor({ state: "visible", timeout: 8000 });
-      await settle(page);
-      await shoot(page, vp, "settings-add-group-dialog", {
-        clip: page.getByRole("dialog").last(),
-      });
-    },
-  );
+    });
+  }
 
   // ---- Portal ----
 
@@ -1074,7 +972,7 @@ async function run() {
     return;
   }
 
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {});
   const captured = [];
   const skipped = [];
 

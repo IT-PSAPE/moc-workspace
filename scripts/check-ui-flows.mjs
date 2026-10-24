@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { chromium } from "playwright";
 import { startUiTestApi, routeUiTestApi } from "./ui-test-server.mjs";
 
@@ -11,7 +11,7 @@ const isolated = await startUiTestApi([
   new URL(portalUrl).origin,
 ]);
 let browser;
-const output = ".shots/flows";
+const output = process.env.UI_FLOW_OUT || ".shots/flows";
 await mkdir(output, { recursive: true });
 const pad = (n) => String(n).padStart(2, "0");
 function futureInput(hours) {
@@ -36,8 +36,30 @@ async function snap(page, name, width) {
     `${name} horizontal overflow at ${width}px`,
   );
 }
+async function assertFloatingDetails(page, label) {
+  const panel = page.locator('.modal-panel[data-side="right"]');
+  await panel.waitFor();
+  const geometry = await panel.evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    return { top: rect.top, right: innerWidth - rect.right, bottom: innerHeight - rect.bottom, radius: parseFloat(getComputedStyle(node).borderRadius), width: rect.width };
+  });
+  assert.ok(geometry.top > 0 && geometry.right > 0 && geometry.bottom > 0 && geometry.radius > 0, label + " uses the shared floating detail drawer");
+  assert.equal(await panel.locator(".task-detail-tabs").count(), 0, label + " has inline comments without tabs");
+  return geometry.width;
+}
+
+async function columnGeometry(table) {
+  await table.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  return table.locator("thead tr:first-child th").evaluateAll((cells) =>
+    cells.map((cell) => ({ left: cell.offsetLeft, width: cell.offsetWidth })),
+  );
+}
 try {
-  browser = await chromium.launch();
+  browser = await chromium.launch(
+    process.env.PLAYWRIGHT_CHANNEL
+      ? { channel: process.env.PLAYWRIGHT_CHANNEL }
+      : {},
+  );
   const catalog = await fetch(`${isolated.url}/api/catalog`).then((response) =>
     response.json(),
   );
@@ -136,23 +158,28 @@ try {
       name: "Filter requests by status",
       exact: true,
     });
-    const pendingStatus = requestStatus.getByRole("button", {
-      name: /^Pending · \d+$/,
+    const backlogStatus = requestStatus.getByRole("button", {
+      name: /^Backlog · \d+$/,
     });
-    assert.equal(await pendingStatus.getAttribute("aria-pressed"), "true");
-    const pendingRequestCount = await workspace.locator(".request-row").count();
-    assert.ok(pendingRequestCount > 0, "Default request filter shows pending work");
+    assert.equal(await backlogStatus.getAttribute("aria-pressed"), "true");
+    const requestTable = workspace.locator(".requests-data-table");
+    const requestColumnGeometry = await columnGeometry(requestTable);
+    const backlogRequestCount = await workspace.locator(".request-row").count();
+    assert.ok(backlogRequestCount > 0, "Default request filter shows backlog work");
     const approvedStatus = requestStatus.getByRole("button", {
       name: /^Approved · \d+$/,
     });
     await approvedStatus.click();
+    assert.deepEqual(await columnGeometry(requestTable), requestColumnGeometry, "Request columns stay fixed when status changes");
     assert.equal(await approvedStatus.getAttribute("aria-pressed"), "true");
     assert.equal(
       await workspace.locator(".request-list").getAttribute("aria-label"),
       "approved requests",
     );
+    await requestStatus.getByRole("button", { name: /^Rejected · \d+$/ }).click();
+    assert.deepEqual(await columnGeometry(requestTable), requestColumnGeometry, "Rejected requests preserve the same columns");
     const allStatuses = requestStatus.getByRole("button", {
-      name: /^All · \d+$/,
+      name: /^All requests · \d+$/,
     });
     await allStatuses.click();
     assert.equal(await allStatuses.getAttribute("aria-pressed"), "true");
@@ -161,16 +188,62 @@ try {
       "all requests",
     );
     assert.ok(
-      (await workspace.locator(".request-row").count()) >= pendingRequestCount,
+      (await workspace.locator(".request-row").count()) >= backlogRequestCount,
       "Resetting request filters restores all statuses",
     );
-    await workspace
-      .locator(".request-row")
-      .filter({ hasText: editedTitle })
-      .click();
+    assert.deepEqual(await columnGeometry(requestTable), requestColumnGeometry, "Request columns stay fixed when all rows are restored");
+    const requestSearch = workspace.getByRole("textbox", { name: "Search requests", exact: true });
+    await requestSearch.fill("no-match-column-width-check");
+    assert.equal(await workspace.locator(".request-row").count(), 0);
+    assert.deepEqual(await columnGeometry(requestTable), requestColumnGeometry, "Empty results preserve the same columns");
+    await requestSearch.fill("");
+    const requestHeaders = (await requestTable.locator("thead th").allTextContents()).map((x) => x.trim());
+    assert.deepEqual(
+      requestHeaders,
+      ["Task", "Ministry", "Service", "Due date", "Group", "Department", "Status"],
+      "Requests use separate, named data columns",
+    );
+    const requestTrigger = workspace.getByRole("button", { name: `Open ${editedTitle}`, exact: true });
+    const editedRequestRow = requestTable.locator("tbody tr").filter({ has: requestTrigger });
+    await editedRequestRow.waitFor();
+    const requestRowText = await editedRequestRow.innerText();
+    assert.equal(requestRowText.includes(code), false, "The private access code is never rendered in the request table");
+    const dueCell = editedRequestRow.locator('[data-label="Due date"]');
+    const shortNotice = dueCell.getByRole("button", { name: "Short notice", exact: true });
+    await shortNotice.hover();
+    await workspace.getByRole("tooltip", { name: "Short notice", exact: true }).waitFor();
+    assert.equal(await dueCell.locator(".badge").count(), 0, "Table notices use a trailing icon instead of a badge");
+    const noticeAlignment = await dueCell.evaluate((cell) => {
+      const time = cell.querySelector("time").getBoundingClientRect();
+      const icon = cell.querySelector("button").getBoundingClientRect();
+      return { sameLine: Math.abs((time.y + time.height / 2) - (icon.y + icon.height / 2)) < 2, trailing: icon.x >= time.right };
+    });
+    assert.ok(noticeAlignment.sameLine && noticeAlignment.trailing, "The notice icon stays inline after the date");
+    await shortNotice.press("Escape");
+    await workspace.mouse.move(0, 0);
+    await workspace.getByRole("textbox", { name: "Search requests", exact: true }).focus();
+    await shortNotice.focus();
+    await workspace.getByRole("tooltip", { name: "Short notice", exact: true }).waitFor();
+    await shortNotice.press("Escape");
+    const badgeReadability = await editedRequestRow.locator('[data-label="Department"] .badge, [data-label="Group"] .badge').evaluateAll((nodes) => {
+      const rgb = (value) => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+      const luminance = (value) => {
+        const [r, g, b] = rgb(value).map((channel) => channel / 255).map((channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      return nodes.map((node) => {
+        const style = getComputedStyle(node);
+        const fg = luminance(style.color);
+        const bg = luminance(style.backgroundColor);
+        return { label: node.textContent?.trim(), foreground: style.color, background: style.backgroundColor, contrast: (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05) };
+      });
+    });
+    assert.ok(badgeReadability.length >= 2 && badgeReadability.every((item) => item.contrast >= 4.5), "Department and group badges have readable foreground/background colors");
+    await requestTrigger.click();
     await workspace
       .getByRole("heading", { name: "Request details", exact: true })
       .waitFor();
+    const detailWidth = await assertFloatingDetails(workspace, "Request details");
     await snap(workspace, "request-approval", width);
     await workspace
       .getByRole("button", { name: "Approve and route", exact: true })
@@ -193,12 +266,23 @@ try {
     await workspace
       .getByRole("button", { name: `Open ${editedTitle}`, exact: true })
       .click();
-    await workspace.getByRole("button", { name: "100%", exact: true }).click();
+    assert.equal(await assertFloatingDetails(workspace, "Department task details"), detailWidth);
+    await workspace.getByRole("button", { name: "In progress", exact: true }).click();
     await workspace.locator(".modal-panel").waitFor({ state: "hidden" });
+    await workspace.getByRole("button", { name: `Open ${editedTitle}`, exact: true }).click();
+    await workspace.getByRole("button", { name: "Complete", exact: true }).click();
+    await workspace.locator(".modal-panel").waitFor({ state: "hidden" });
+    const lifecycleState = await workspace.evaluate(async (api) => fetch(api + "/api/workspace").then((response) => response.json()), clientApiUrl);
+    const savedRequest = lifecycleState.requests.find((item) => item.title === editedTitle);
+    const savedTask = lifecycleState.tasks.find((item) => item.requestId === savedRequest.id);
+    for (const milestone of ["receivedAt", "approvedAt", "inProgressAt", "completedAt"]) {
+      assert.ok(Number.isFinite(Date.parse(savedTask.lifecycle[milestone])), milestone + " is recorded");
+      assert.equal(savedRequest.lifecycle[milestone], savedTask.lifecycle[milestone], milestone + " stays synchronized");
+    }
+    assert.equal(Object.hasOwn(savedTask, "completedAt"), false, "Completion lives in the lifecycle JSON object");
     await workspace
       .getByRole("button", { name: `Open ${editedTitle}`, exact: true })
       .click();
-    await workspace.getByRole("button", { name: /^Comments/ }).click();
     await workspace
       .getByRole("textbox", { name: "Add a comment", exact: true })
       .fill("Private verification note, visible only to leaders.");
@@ -217,7 +301,6 @@ try {
     await workspace
       .getByRole("button", { name: `Open ${editedTitle}`, exact: true })
       .click();
-    await workspace.getByRole("button", { name: /^Comments/ }).click();
     await workspace
       .getByText("Private verification note, visible only to leaders.", {
         exact: true,
@@ -238,6 +321,12 @@ try {
       waitUntil: "networkidle",
     });
     const overviewRows = workspace.locator(".task-table tbody tr");
+    const overviewHeaders = (await workspace.locator(".task-table thead th").allTextContents()).map((x) => x.trim());
+    assert.deepEqual(overviewHeaders, ["Task", "Ministry", "Service", "Due date", "Group", "Department", "Status"]);
+    await workspace.locator(".task-table").getByRole("button", { name: `Open ${editedTitle}`, exact: true }).click();
+    assert.equal(await assertFloatingDetails(workspace, "Department overview task details"), detailWidth);
+    await workspace.getByRole("button", { name: "Close dialog", exact: true }).click();
+    await workspace.locator(".modal-panel").waitFor({ state: "hidden" });
     const allOverviewRows = await overviewRows.count();
     const overviewFilters = workspace.getByRole("button", {
       name: /^Filters/,
@@ -320,16 +409,49 @@ try {
         .click();
     } else await workspace.locator(".calendar-task").first().click();
     await workspace
-      .getByRole("heading", { name: "Deadline details", exact: true })
+      .getByRole("heading", { name: "Task details", exact: true })
       .waitFor();
+    assert.equal(await assertFloatingDetails(workspace, "Calendar task details"), detailWidth);
     await snap(workspace, "calendar-detail", width);
     await workspace.goto(`${workspaceUrl}/reports`, {
       waitUntil: "networkidle",
     });
+    const reportTable = workspace.locator('[data-slot="data-table"] table');
+    const reportHeaders = (await reportTable.locator("thead th").allTextContents()).map((x) => x.trim());
+    assert.deepEqual(reportHeaders, ["Task", "Ministry", "Service", "Due date", "Group", "Department", "Status", "Received date", "Approved date", "Rejected date", "In progress date", "Completed date"]);
+    const palette = await reportTable.locator('[data-label="Department"] .badge, [data-label="Group"] .badge').evaluateAll((nodes) => {
+      const channels = (value) => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+      const luminance = (value) => {
+        const [r, g, b] = channels(value).map((channel) => channel / 255).map((channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      return nodes.map((node) => {
+        const style = getComputedStyle(node);
+        const fg = luminance(style.color);
+        const bg = luminance(style.backgroundColor);
+        return { background: style.backgroundColor, contrast: (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05) };
+      });
+    });
+    assert.ok(palette.length > 0 && palette.every((item) => item.contrast >= 4.5), "Report department/group badges have readable palette contrast");
+    await reportTable.getByRole("button", { name: `Open ${editedTitle}`, exact: true }).click();
+    assert.equal(await assertFloatingDetails(workspace, "Report task details"), detailWidth);
+    await workspace.getByRole("button", { name: "Close dialog", exact: true }).click();
+    await workspace.locator(".modal-panel").waitFor({ state: "hidden" });
     const downloadPromise = workspace.waitForEvent("download");
     await workspace.getByRole("button", { name: /Export/ }).click();
     const download = await downloadPromise;
     assert.match(download.suggestedFilename(), /\.csv$/);
+    const csv = await readFile(await download.path(), "utf8");
+    assert.ok(csv.includes(reportHeaders.map((header) => `"${header}"`).join(",")), "CSV preserves the shared task columns and lifecycle date columns");
+    assert.ok(csv.includes(savedTask.lifecycle.completedAt), "CSV exports recorded lifecycle dates");
+    const reportColumnGeometry = await columnGeometry(reportTable);
+    const reportMonth = workspace.locator('.report-month-controls strong');
+    const originalMonth = await reportMonth.innerText();
+    await workspace.getByRole("button", { name: "Next month", exact: true }).click();
+    assert.notEqual(await reportMonth.innerText(), originalMonth, "Report month control updates the reporting period");
+    assert.deepEqual(await columnGeometry(reportTable), reportColumnGeometry, "Report column widths remain stable between periods");
+    await workspace.getByRole("button", { name: "Previous month", exact: true }).click();
+    assert.equal(await reportMonth.innerText(), originalMonth);
     await workspace.goto(`${workspaceUrl}/settings`, {
       waitUntil: "networkidle",
     });
@@ -341,73 +463,70 @@ try {
       .waitFor();
     await snap(workspace, "member-invite-form", width);
     const memberRow = workspace
-      .locator(".members-row")
+      .getByRole("row")
       .filter({ hasText: "Grace Ndlovu" });
     assert.equal(await memberRow.count(), 1, "Seed member row is present");
     await memberRow
-      .getByRole("button", { name: "Edit Grace Ndlovu duty", exact: true })
+      .getByRole("combobox", { name: "Edit Grace Ndlovu duty", exact: true })
       .click();
-    const dutyEditor = memberRow.getByRole("textbox", {
-      name: "Duty for Grace Ndlovu",
+    const dutyEditor = workspace.getByRole("combobox", {
+      name: "Search Grace Ndlovu duty",
       exact: true,
     });
-    const originalDuty = await dutyEditor.inputValue();
+    const originalDuty = await memberRow.locator("td[data-label='Duty']").innerText();
     const changedDuty = `${originalDuty} UI ${width}`;
     await dutyEditor.fill(changedDuty);
-    await memberRow
-      .getByRole("button", { name: "Save Grace Ndlovu duty", exact: true })
-      .click();
+    await dutyEditor.press("ArrowDown");
+    await dutyEditor.press("Enter");
     await memberRow.getByText(changedDuty, { exact: true }).waitFor();
     await workspace.reload({ waitUntil: "networkidle" });
     const persistedMemberRow = workspace
-      .locator(".members-row")
+      .getByRole("row")
       .filter({ hasText: "Grace Ndlovu" });
     await persistedMemberRow.getByText(changedDuty, { exact: true }).waitFor();
     await persistedMemberRow
-      .getByRole("button", { name: "Edit Grace Ndlovu duty", exact: true })
+      .getByRole("combobox", { name: "Edit Grace Ndlovu duty", exact: true })
       .click();
-    await persistedMemberRow
-      .getByRole("textbox", { name: "Duty for Grace Ndlovu", exact: true })
-      .fill(originalDuty);
-    await persistedMemberRow
-      .getByRole("button", { name: "Save Grace Ndlovu duty", exact: true })
-      .click();
+    const restoreDuty = workspace.getByRole("combobox", {
+      name: "Search Grace Ndlovu duty",
+      exact: true,
+    });
+    await restoreDuty.fill(originalDuty);
+    await workspace.getByRole("option", { name: originalDuty, exact: true }).click();
     await persistedMemberRow.getByText(originalDuty, { exact: true }).waitFor();
 
     await workspace.goto(`${workspaceUrl}/settings#departments`, {
       waitUntil: "networkidle",
     });
     await workspace.getByRole("button", { name: "New department", exact: true }).waitFor();
+    const departmentHeaders = (await workspace.locator(".department-table thead th").allTextContents()).map((value) => value.trim()).filter(Boolean);
+    assert.deepEqual(departmentHeaders, ["Department", "Groups", "Color"]);
+    assert.equal(await workspace.locator(".department-table thead").getByRole("checkbox").count(), 1, "Departments expose reusable table selection");
     const designRow = workspace
       .locator(".department-table tbody tr")
-      .filter({ hasText: "Design" })
-      .first();
-    await designRow.getByRole("button", { name: "Actions for Design" }).click();
-    await workspace.getByRole("menuitem", { name: "Rename", exact: true }).click();
-    const departmentName = workspace.getByLabel("Department name", { exact: true });
-    assert.equal(await departmentName.inputValue(), "Design");
-    await workspace.getByRole("button", { name: "Cancel", exact: true }).click();
+      .filter({ has: workspace.getByRole("combobox", { name: "Edit Design groups", exact: true }) });
+    const departmentName = workspace.getByRole("textbox", { name: "Design department name", exact: true });
+    assert.equal(await departmentName.innerText(), "Design");
+    await departmentName.fill("Discarded Design rename");
+    await departmentName.press("Escape");
+    assert.equal(await departmentName.innerText(), "Design", "Department names edit inline and Escape restores the value");
 
     const testGroup = `UI ${width} ${Date.now()}`;
-    await designRow.getByRole("button", { name: /Manage .* groups for Design/ }).click();
-    const groupDrawer = workspace.getByRole("dialog", { name: "Design groups" });
-    await groupDrawer.getByRole("button", { name: "Add group", exact: true }).click();
-    await workspace.getByLabel("Group name", { exact: true }).fill(testGroup);
-    await workspace.getByRole("button", { name: "Save group", exact: true }).click();
-    let groupRow = groupDrawer.getByRole("row").filter({ hasText: testGroup });
-    await groupRow.waitFor();
-    await groupRow.getByRole("button", { name: `Actions for ${testGroup}` }).click();
-    await workspace.getByRole("menuitem", { name: "Rename", exact: true }).click();
-    const renamedGroup = `${testGroup} renamed`;
-    await workspace.getByLabel("Group name", { exact: true }).fill(renamedGroup);
-    await workspace.getByRole("button", { name: "Save group", exact: true }).click();
-    groupRow = groupDrawer.getByRole("row").filter({ hasText: renamedGroup });
-    await groupRow.waitFor();
-    await groupRow.getByRole("button", { name: `Actions for ${renamedGroup}` }).click();
-    await workspace.getByRole("menuitem", { name: "Delete", exact: true }).click();
+    const groups = designRow.getByRole("combobox", { name: "Edit Design groups", exact: true });
+    await groups.click();
+    assert.equal(await workspace.locator(".modal-panel[data-side]").count(), 0, "Groups edit in a compact popup, not a drawer");
+    await workspace.getByRole("combobox", { name: "Search Design groups", exact: true }).fill(testGroup);
+    await workspace.getByRole("option", { name: "Create new group", exact: true }).click();
+    await groups.getByText(testGroup, { exact: true }).waitFor();
+    await workspace.getByRole("option", { name: testGroup, exact: true }).click();
     const deleteGroupDialog = workspace.getByRole("dialog", { name: "Delete group?" });
+    await deleteGroupDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await groups.getByText(testGroup, { exact: true }).waitFor();
+    await groups.click();
+    await workspace.getByRole("option", { name: testGroup, exact: true }).click();
     await deleteGroupDialog.getByRole("button", { name: "Delete group", exact: true }).click();
-    await groupRow.waitFor({ state: "detached" });
+    await deleteGroupDialog.waitFor({ state: "detached" });
+    assert.equal(await groups.getByText(testGroup, { exact: true }).count(), 0);
     assert.deepEqual(errors, [], "No uncaught browser errors");
     console.log(
       `PASS ${width}px: validation → request → private code → pending edit → approval → task completion → public tracking; filters, calendar, CSV and member invitation form`,
@@ -432,20 +551,21 @@ try {
   await leader.goto(`${workspaceUrl}/`, { waitUntil: "networkidle" });
   assert.equal(
     await leader.getByRole("link", { name: "Requests", exact: true }).count(),
-    1,
+    0,
   );
   assert.equal(
     await leader.getByRole("link", { name: "Reports", exact: true }).count(),
     0,
   );
   await leader.goto(`${workspaceUrl}/requests`, { waitUntil: "networkidle" });
-  await leader
-    .getByRole("button", { name: "Request options", exact: true })
-    .waitFor();
+  await leader.getByRole("heading", { name: /Requests are .*Cell 0/ }).waitFor();
+  assert.equal(await leader.getByRole("button", { name: "Request options", exact: true }).count(), 0);
+  const leaderState = await leader.evaluate(async (api) => fetch(api + "/api/workspace").then((response) => response.json()), clientApiUrl);
+  assert.deepEqual(leaderState.requests, [], "Non-Cell 0 API responses omit requests");
   assert.equal(
     await leader.locator(".request-list").count(),
     0,
-    "Department leaders manage catalog without receiving the private request inbox",
+    "Department leaders cannot access the private request inbox",
   );
   await leader.goto(`${workspaceUrl}/departments/design`, {
     waitUntil: "networkidle",
@@ -458,7 +578,7 @@ try {
   );
   await leader.locator(".task-card-open").first().click();
   assert.equal(
-    await leader.getByRole("button", { name: "25%", exact: true }).count(),
+    await leader.getByRole("button", { name: /^(Move to pending|In progress|Complete)$/, exact: true }).count(),
     0,
   );
   await snap(leader, "department-view-only", 1440);
@@ -472,7 +592,7 @@ try {
   await leaderContext.unrouteAll({ behavior: "wait" });
   await leaderContext.close();
   console.log(
-    "PASS department leader: request setup available, private reporting hidden, other team view-only, Cell 0 private",
+    "PASS department leader: request inbox and reporting hidden, other team view-only, Cell 0 private",
   );
 } finally {
   await browser?.close();

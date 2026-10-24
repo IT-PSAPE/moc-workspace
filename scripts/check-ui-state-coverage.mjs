@@ -8,6 +8,7 @@
  *   node scripts/check-ui-state-coverage.mjs
  *   node scripts/check-ui-state-coverage.mjs --only=errors
  *   node scripts/check-ui-state-coverage.mjs --only=mutations
+ *   node scripts/check-ui-state-coverage.mjs --only=lifecycle,access,keyboard
  */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -48,7 +49,7 @@ const plannedStates = [
   ...[
     "mutation.notifications.read.busy-error-recovery",
     "mutation.task.create.busy-error-recovery",
-    "mutation.task.progress.busy-error-recovery",
+    "mutation.task.status.busy-error-recovery",
     "mutation.comments.post.busy-error-recovery",
     "mutation.request.approve.busy-error-recovery",
     "mutation.request.reject.busy-error-recovery",
@@ -56,13 +57,15 @@ const plannedStates = [
   ["mutation.portal-edit.busy-error-recovery", "mutations"],
   { stateId: "catalog.department-groups-ministry-service-remap-approve", group: "catalog", planned: true },
   { stateId: "departments.rename-group-create-delete-color", group: "departments", planned: true },
-  { stateId: "tables.phone-members-departments-scrollcue-and-segmented-rects", group: "responsive", planned: true },
+  { stateId: "tables.phone-members-departments-scrollcue-and-sidebar", group: "responsive", planned: true },
   { stateId: "members.invite-edit-duty-groups-leadership", group: "members", planned: true },
   ["portal.aired-date.validation-and-multiple", "portal"],
   ["empty.notifications-actions", "empty"],
   ["portal.tracking.pending-and-clipboard-denied", "portal"],
-  ["portal.tracking.approved-progress-complete-rejected", "portal"],
+  ["portal.tracking.approved-in-progress-complete-rejected", "portal"],
   ["data.dense-long-dashboard-reports", "dense"],
+  ["lifecycle.rejected-request-can-be-approved", "lifecycle"],
+  ["lifecycle.report-milestones-and-widgets", "lifecycle"],
   ["keyboard.portal-first-invalid-and-described-error", "keyboard"],
   ["keyboard.mobile-drawer-trap-restore", "keyboard"],
   ["keyboard.task-detail-trap-restore-and-comment-draft", "keyboard"],
@@ -84,10 +87,7 @@ function expect(row, id, actual, predicate) {
   assert.ok(passed, row.stateId + ": " + id + "; got " + JSON.stringify(actual));
 }
 function enabled(group) {
-  return !only || group.includes(only);
-}
-function inlineEditContainer(control) {
-  return control.locator("xpath=../..");
+  return !only || only.split(",").some((selection) => group.includes(selection.trim()));
 }
 async function shot(page, row, suffix) {
   const filename = path.join(OUT, row.group, row.stateId + (suffix ? "-" + suffix : "") + ".png");
@@ -175,10 +175,14 @@ async function pageCase(id, group, viewport, body) {
     if (fixture) await dispose(fixture);
   }
   console.log(row.status.toUpperCase() + " " + id);
+  if (row.error) console.error(row.error);
 }
 async function ready(page) {
   await page.getByRole("heading", { level: 1 }).first().waitFor({ timeout: 20000 });
   await page.waitForTimeout(250);
+}
+function requestTrigger(page, title) {
+  return page.getByRole("button", { name: `Open ${title}`, exact: true });
 }
 async function loginRole(page, department) {
   await page.goto(W, { waitUntil: "domcontentloaded" });
@@ -236,9 +240,12 @@ async function settledFocusCycle(page, count = 24) {
 }
 async function settledFocusRestore(page, expectedSelector) {
   await page.waitForTimeout(60);
-  const after60ms = await page.evaluate((selector) => Boolean(document.activeElement?.matches(selector)), expectedSelector);
+  const check = () => typeof expectedSelector === "string"
+    ? page.evaluate((selector) => Boolean(document.activeElement?.matches(selector)), expectedSelector)
+    : expectedSelector.evaluate((node) => document.activeElement === node);
+  const after60ms = await check();
   await page.waitForTimeout(240);
-  const after300ms = await page.evaluate((selector) => Boolean(document.activeElement?.matches(selector)), expectedSelector);
+  const after300ms = await check();
   return { after60ms, after300ms };
 }
 
@@ -294,6 +301,9 @@ async function accessAndEmpty() {
       await page.getByText(/managed by Cell 0|private to Cell 0|Your account/i).first().waitFor({ timeout: 10000 });
       expect(row, "gate-" + routePath, await page.locator("body").innerText(), (x) => /managed by Cell 0|private to Cell 0|Your account/i.test(x));
     }
+    const privateState = await page.evaluate(async (api) => fetch(api + "/api/workspace").then((response) => response.json()), API);
+    expect(row, "non-cell0-api-omits-request-inbox", privateState.requests, (requests) => Array.isArray(requests) && requests.length === 0);
+    expect(row, "request-nav-hidden-for-other-departments", await page.getByRole("link", { name: "Requests", exact: true }).count(), (count) => count === 0);
     await page.goto(W + "/departments/cell-0", { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "This department is private" }).waitFor();
     await shot(page, row, "private");
@@ -322,7 +332,7 @@ async function accessAndEmpty() {
   const emptyRoutes = [
     ["/", "empty.dashboard", /No active tasks\./i],
     ["/departments", "empty.departments", /No tasks here yet/i],
-    ["/requests", "empty.requests", /All caught up/i],
+    ["/requests", "empty.requests", /There are no backlog requests in the inbox right now\./i],
     ["/calendar", "empty.calendar", null],
     ["/reports", "empty.reports", /No task activity/i],
   ];
@@ -410,34 +420,36 @@ async function formBasics(page, title, aired, row, servicePattern, ministryName)
   await page.getByRole("heading", { name: /Step 2: Review and confirm/i }).waitFor();
 }
 
+async function navigateSettingsSection(page, section) {
+  let navigation = page.getByRole("navigation", { name: "Settings", exact: true });
+  if (!await navigation.isVisible()) {
+    await page.getByRole("button", { name: "Open navigation", exact: true }).click();
+    navigation = page.getByRole("navigation", { name: "Settings", exact: true });
+  }
+  await navigation.getByRole("link", { name: section, exact: true }).click();
+  await page.getByRole("heading", { name: section, exact: true }).waitFor();
+}
+
 async function createDepartmentAndGroups(page, name, firstGroup, secondGroup) {
   await page.goto(W + "/settings", { waitUntil: "domcontentloaded" });
   await ready(page);
-  await page.getByRole("group", { name: "Settings section" }).getByRole("button", { name: "Departments", exact: true }).click();
+  await navigateSettingsSection(page, "Departments");
   await page.getByRole("heading", { name: "Departments" }).waitFor();
   await page.getByRole("button", { name: "New department", exact: true }).click();
   const createDialog = page.getByRole("dialog", { name: "New department" });
   await createDialog.waitFor();
   await createDialog.getByLabel("Department name", { exact: true }).fill(name);
   await createDialog.getByLabel("First group", { exact: true }).fill(firstGroup);
-  // The native select is explicitly associated through htmlFor/id. Resolve it
-  // by its stable id: getByLabel is inconsistent here because the label also
-  // renders the selected color text as part of its accessible-name subtree.
-  await createDialog.locator("#new-department-color").selectOption("blue");
+  await createDialog.getByRole("combobox", { name: "Edit New department calendar color", exact: true }).click();
+  await page.getByRole("option", { name: "Blue", exact: true }).click();
   await createDialog.getByRole("button", { name: "Create department", exact: true }).click();
   await createDialog.waitFor({ state: "detached" });
-  const groupManager = page.getByRole("button", { name: new RegExp(`^Manage 1 groups? for ${name}$`) });
-  await groupManager.waitFor();
-  await groupManager.click();
-  const groupsDrawer = page.getByRole("dialog", { name: `${name} groups` });
-  await groupsDrawer.getByRole("button", { name: "Add group", exact: true }).click();
-  const groupDialog = page.getByRole("dialog", { name: "Add group" });
-  await groupDialog.getByLabel("Group name").fill(secondGroup);
-  await groupDialog.getByRole("button", { name: "Save group", exact: true }).click();
-  await groupDialog.waitFor({ state: "detached" });
-  await groupsDrawer.getByRole("row", { name: new RegExp(secondGroup) }).waitFor();
-  await groupsDrawer.getByRole("button", { name: "Close dialog" }).click();
-  await page.getByRole("button", { name: `Manage 2 groups for ${name}`, exact: true }).waitFor();
+  const groups = page.getByRole("combobox", { name: `Edit ${name} groups`, exact: true });
+  await groups.click();
+  await page.getByRole("combobox", { name: `Search ${name} groups`, exact: true }).fill(secondGroup);
+  await page.getByRole("option", { name: "Create new group", exact: true }).click();
+  await groups.getByText(secondGroup, { exact: true }).waitFor();
+  await page.getByRole("combobox", { name: `Search ${name} groups`, exact: true }).press("Escape");
   const state = await page.evaluate(async (api) => {
     const response = await fetch(api + "/api/workspace");
     if (!response.ok) throw new Error("Isolated workspace read failed: " + response.status);
@@ -446,35 +458,6 @@ async function createDepartmentAndGroups(page, name, firstGroup, secondGroup) {
   const department = state.catalog.departments.find((item) => item.name === name);
   if (!department) throw new Error("Created department missing from persisted catalog: " + name);
   return department;
-}
-
-async function renameDepartmentGroup(page, department, oldName, nextName) {
-  await page.goto(W + "/settings", { waitUntil: "domcontentloaded" });
-  await ready(page);
-  await page.getByRole("group", { name: "Settings section" }).getByRole("button", { name: "Departments", exact: true }).click();
-  await page.getByRole("heading", { name: "Departments" }).waitFor();
-  await page.getByRole("button", { name: `Manage 2 groups for ${department.name}`, exact: true }).click();
-  await page.getByRole("button", { name: `Actions for ${oldName}`, exact: true }).click();
-  await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Rename group" });
-  await dialog.getByLabel("Group name").fill(nextName);
-  await dialog.getByRole("button", { name: "Save group", exact: true }).click();
-  await dialog.waitFor({ state: "detached" });
-  await page.getByRole("row", { name: new RegExp(nextName) }).waitFor();
-  await page.getByRole("dialog", { name: `${department.name} groups` })
-    .getByRole("button", { name: "Close dialog" }).click();
-  const state = await page.evaluate(async (api) => {
-    const response = await fetch(api + "/api/workspace");
-    if (!response.ok) throw new Error("Isolated workspace read failed: " + response.status);
-    return response.json();
-  }, API);
-  const savedDepartment = state.catalog.departments.find((item) => item.id === department.id);
-  const mappedServices = state.catalog.services.filter((item) => item.department === department.id);
-  return {
-    department: savedDepartment,
-    oldNameStillPresent: Boolean(savedDepartment?.groups.includes(oldName)),
-    mappedServices: mappedServices.map((item) => ({ name: item.name, group: item.subTeam })),
-  };
 }
 
 async function mutations() {
@@ -499,10 +482,10 @@ async function mutations() {
   const specs = [
     ["notifications.read", "/", async (page) => { await page.getByRole("button", { name: /Notifications/i }).first().click(); await page.getByRole("button", { name: /Mark all as read/i }).click(); return { busy: page.getByRole("button", { name: /Mark all as read/i }), error: page.getByRole("alert"), retry: () => page.getByRole("button", { name: /Mark all as read/i }).click() }; }],
     ["task.create", "/departments/sound", async (page) => { await page.getByRole("button", { name: /New internal task/i }).click(); await page.getByPlaceholder("e.g. Prepare Sunday service graphics").fill("Coverage task"); const due = new Date(Date.now() + 7 * 86400000); await page.locator('.modal-panel input[type="datetime-local"]').fill(due.getFullYear() + "-" + String(due.getMonth() + 1).padStart(2, "0") + "-" + String(due.getDate()).padStart(2, "0") + "T12:00"); await page.getByPlaceholder("What needs to be delivered?").fill("Coverage instructions."); await page.getByPlaceholder("Context and coordination details").fill("Isolated fixture."); const submit = page.locator(".modal-panel button[type=submit]"); await submit.click(); return { busy: page.locator(".modal-panel button[type=submit]"), error: page.getByRole("alert"), retry: () => page.locator(".modal-panel button[type=submit]").click() }; }],
-    ["task.progress", "/departments/sound", async (page) => { await page.locator(".task-card-open").first().click(); await page.getByRole("button", { name: "100%", exact: true }).click(); return { busy: page.getByRole("button", { name: "100%", exact: true }), error: page.getByRole("alert"), retry: () => page.getByRole("button", { name: "100%", exact: true }).click() }; }],
-    ["comments.post", "/departments/sound", async (page) => { await page.locator(".task-card-open").first().click(); await page.getByRole("button", { name: /^Comments/ }).click(); await page.getByRole("textbox", { name: "Add a comment" }).fill("Coverage comment retry."); await page.getByRole("button", { name: "Post comment" }).click(); return { busy: page.getByRole("button", { name: "Posting…" }), error: page.getByRole("alert"), retry: () => page.getByRole("button", { name: "Post comment" }).click() }; }],
-    ["request.approve", "/requests", async (page) => { await page.locator(".request-row").first().click(); await page.getByRole("button", { name: "Approve and route" }).click(); return { busy: page.getByRole("button", { name: "Routing…" }), error: page.getByRole("alert"), retry: () => page.getByRole("button", { name: "Approve and route" }).click() }; }],
-    ["request.reject", "/requests", async (page) => { await page.locator(".request-row").first().click(); await page.getByRole("button", { name: "Reject request" }).click(); await page.getByLabel("Reason for rejection").fill("Coverage rejection reason."); await page.getByRole("button", { name: "Return request" }).click(); return { busy: page.getByRole("button", { name: "Returning…" }), error: page.getByRole("alert"), retry: () => page.getByRole("button", { name: "Return request" }).click() }; }],
+    ["task.status", "/departments/sound", async (page) => { await page.locator(".task-card-open").first().click(); await page.getByRole("button", { name: "Complete", exact: true }).click(); return { busy: page.getByRole("button", { name: "Complete", exact: true }), error: page.getByRole("alert"), retry: () => page.getByRole("button", { name: "Complete", exact: true }).click() }; }],
+    ["comments.post", "/departments/sound", async (page) => { await page.locator(".task-card-open").first().click(); await page.getByRole("textbox", { name: "Add a comment" }).fill("Coverage comment retry."); await page.getByRole("button", { name: "Post comment" }).click(); return { busy: page.getByRole("button", { name: "Posting…" }), error: page.getByRole("alert"), retry: () => page.getByRole("button", { name: "Post comment" }).click() }; }],
+    ["request.approve", "/requests", async (page) => { await page.getByRole("button", { name: /^Open / }).first().click(); await page.getByRole("button", { name: "Approve and route" }).click(); return { busy: page.getByRole("button", { name: "Routing…" }), error: page.getByRole("alert"), retry: () => page.getByRole("button", { name: "Approve and route" }).click() }; }],
+    ["request.reject", "/requests", async (page) => { await page.getByRole("button", { name: /^Open / }).first().click(); await page.getByRole("button", { name: "Reject request" }).click(); await page.getByLabel("Reason for rejection").fill("Coverage rejection reason."); await page.getByRole("button", { name: "Reject request" }).click(); return { busy: page.getByRole("button", { name: "Rejecting…" }), error: page.getByRole("alert"), retry: () => page.getByRole("button", { name: "Reject request" }).click() }; }],
   ];
   for (const [id, routePath, action] of specs) {
     await pageCase("mutation." + id + ".busy-error-recovery", "mutations", "desktop", async ({ row, fixture, page }) => {
@@ -561,38 +544,37 @@ async function departmentManagementJourney() {
     const first = "Inline Alpha";
     const second = "Inline Beta";
     const department = await createDepartmentAndGroups(page, initialName, first, second);
-    const departmentRow = page.locator(".department-table tr").filter({ hasText: initialName });
-
-    await departmentRow.getByRole("button", { name: `Actions for ${initialName}`, exact: true }).click();
-    await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
-    const nameDialog = page.getByRole("dialog", { name: "Rename department" });
-    const nameInput = nameDialog.getByLabel("Department name");
+    let departmentRow = page.locator(".department-table tr").filter({ has: page.getByRole("combobox", { name: `Edit ${initialName} groups`, exact: true }) });
+    const nameInput = page.getByRole("textbox", { name: `${initialName} department name`, exact: true });
+    expect(row, "department-table-has-distinct-fields-without-actions-column", (await page.locator(".department-table thead th").allTextContents()).map((value) => value.trim()).filter(Boolean), (headers) => headers.join("|") === "Department|Groups|Color");
+    expect(row, "department-table-has-shared-selection-column", await page.locator(".department-table thead").getByRole("checkbox").count(), (count) => count === 1);
+    const groupBadges = await departmentRow.getByRole("combobox", { name: `Edit ${initialName} groups`, exact: true }).locator(".badge").evaluateAll((nodes) => nodes.map((node) => {
+      const style = getComputedStyle(node);
+      return { text: node.textContent?.trim(), color: style.color, background: style.backgroundColor };
+    }));
+    expect(row, "department-groups-show-full-named-color-badges", groupBadges, (items) => items.length === 2 && items.some((item) => item.text === first) && items.some((item) => item.text === second) && items.every((item) => item.color !== "rgba(0, 0, 0, 0)" && item.background !== "rgba(0, 0, 0, 0)"));
     await nameInput.fill("Cancelled department draft");
-    await nameDialog.getByRole("button", { name: "Cancel", exact: true }).click();
-    await nameDialog.waitFor({ state: "detached" });
-    await page.getByRole("button", { name: `Actions for ${initialName}`, exact: true }).waitFor();
-    expect(row, "department-rename-cancel-discards-draft", await page.locator(".department-table").innerText(), (text) => text.includes(initialName) && !text.includes("Cancelled department draft"));
+    await nameInput.press("Escape");
+    expect(row, "department-name-escape-restores-baseline", await nameInput.innerText(), (text) => text === initialName);
 
-    await page.getByRole("button", { name: `Actions for ${initialName}`, exact: true }).click();
-    await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
-    const duplicateNameDialog = page.getByRole("dialog", { name: "Rename department" });
-    const duplicateNameInput = duplicateNameDialog.getByLabel("Department name");
-    await duplicateNameInput.fill("Sound");
-    await duplicateNameDialog.getByRole("button", { name: "Save name", exact: true }).click();
-    const duplicateNameError = duplicateNameDialog.getByRole("alert");
+    await nameInput.fill("Sound");
+    await nameInput.press("Enter");
+    const duplicateNameError = departmentRow.getByRole("alert");
     await duplicateNameError.waitFor();
-    expect(row, "department-rename-duplicate-validation-retains-draft", { message: await duplicateNameError.innerText(), value: await duplicateNameInput.inputValue(), focus: await duplicateNameInput.evaluate((node) => document.activeElement === node) }, (state) => /already exists/i.test(state.message) && state.value === "Sound" && state.focus);
+    await page.waitForFunction((label) => document.activeElement?.getAttribute("aria-label") === label, `${initialName} department name`);
+    expect(row, "department-name-duplicate-validation-retains-draft", { message: await duplicateNameError.innerText(), value: await nameInput.innerText(), focus: await nameInput.evaluate((node) => document.activeElement === node) }, (state) => /already exists/i.test(state.message) && state.value === "Sound" && state.focus);
 
     const nextName = "Coverage Inline Department Renamed";
-    await duplicateNameInput.fill(nextName);
+    await nameInput.fill(nextName);
     fixture.faults.set("POST /api/actions", { status: 503, remaining: 1, delay: 650, message: "coverage department rename failed" });
-    await duplicateNameDialog.getByRole("button", { name: "Save name", exact: true }).click();
-    await duplicateNameDialog.getByRole("button", { name: "Saving…", exact: true }).waitFor();
+    await nameInput.press("Enter");
+    await nameInput.waitFor({ state: "visible" });
+    await page.waitForFunction((label) => document.querySelector(`[aria-label="${CSS.escape(label)}"]`)?.getAttribute("aria-busy") === "true", `${initialName} department name`);
     await shot(page, row, "department-rename-busy");
-    const renameError = duplicateNameDialog.getByRole("alert");
+    const renameError = departmentRow.getByRole("alert");
     await renameError.waitFor();
     await page.waitForTimeout(60);
-    const focusDescription = () => duplicateNameInput.evaluate((node) => ({
+    const focusDescription = () => nameInput.evaluate((node) => ({
       focused: document.activeElement === node,
       activeTag: document.activeElement?.tagName ?? null,
       activeId: document.activeElement?.id ?? null,
@@ -602,74 +584,88 @@ async function departmentManagementJourney() {
     const renameErrorAt60ms = await focusDescription();
     await page.waitForTimeout(240);
     const renameErrorAt300ms = await focusDescription();
-    expect(row, "department-rename-error-retains-draft", { message: await renameError.innerText(), value: await duplicateNameInput.inputValue(), focusAt60ms: renameErrorAt60ms, focusAt300ms: renameErrorAt300ms }, (state) => state.message.includes("coverage department rename failed") && state.value === nextName && state.focusAt300ms.focused);
+    expect(row, "department-name-error-retains-draft", { message: await renameError.innerText(), value: await nameInput.innerText(), focusAt60ms: renameErrorAt60ms, focusAt300ms: renameErrorAt300ms }, (state) => state.message.includes("coverage department rename failed") && state.value === nextName && state.focusAt300ms.focused);
     await shot(page, row, "department-rename-error-draft");
-    await duplicateNameDialog.getByRole("button", { name: "Save name", exact: true }).click();
-    await duplicateNameDialog.waitFor({ state: "detached" });
-    await page.getByRole("button", { name: `Actions for ${nextName}`, exact: true }).waitFor();
+    await nameInput.press("Enter");
+    await page.getByRole("textbox", { name: `${nextName} department name`, exact: true }).waitFor();
+    departmentRow = page.locator(".department-table tr").filter({ has: page.getByRole("combobox", { name: `Edit ${nextName} groups`, exact: true }) });
 
-    await page.getByRole("button", { name: `Manage 2 groups for ${nextName}`, exact: true }).click();
-    const groupsDrawer = page.getByRole("dialog", { name: `${nextName} groups` });
-    await groupsDrawer.getByRole("button", { name: "Add group", exact: true }).click();
-    const addGroupDialog = page.getByRole("dialog", { name: "Add group" });
-    const groupInput = addGroupDialog.getByLabel("Group name");
+    const groups = page.getByRole("combobox", { name: `Edit ${nextName} groups`, exact: true });
+    await groups.click();
+    const groupInput = page.getByRole("combobox", { name: `Search ${nextName} groups`, exact: true });
+    const groupPopup = page.getByRole("listbox").last().locator("xpath=..");
+    expect(row, "groups-use-combobox-without-drawer", await page.locator(".modal-panel[data-side]").count(), (count) => count === 0);
     await groupInput.fill(first);
-    await addGroupDialog.getByRole("button", { name: "Save group", exact: true }).click();
-    const groupValidation = addGroupDialog.getByRole("alert");
-    await groupValidation.waitFor();
-    expect(row, "group-create-duplicate-validation-keeps-draft", { message: await groupValidation.innerText(), value: await groupInput.inputValue(), focus: await groupInput.evaluate((node) => document.activeElement === node) }, (state) => /already exists/i.test(state.message) && state.value === first && state.focus);
+    expect(row, "group-create-exact-duplicate-disabled", await page.getByRole("option", { name: "Create new group", exact: true }).getAttribute("aria-disabled"), (value) => value === "true");
     const third = "Inline Gamma";
     await groupInput.fill(third);
     fixture.faults.set("POST /api/actions", { status: 503, remaining: 1, delay: 650, message: "coverage group create failed" });
-    await addGroupDialog.getByRole("button", { name: "Save group", exact: true }).click();
-    const groupSaveError = addGroupDialog.getByRole("alert");
+    await page.getByRole("option", { name: "Create new group", exact: true }).click();
+    const groupSaveError = groupPopup.getByRole("alert");
     await groupSaveError.waitFor();
     expect(row, "group-create-error-retains-draft-for-retry", { message: await groupSaveError.innerText(), value: await groupInput.inputValue() }, (state) => state.message.includes("coverage group create failed") && state.value === third);
     await shot(page, row, "group-create-error-draft");
-    await addGroupDialog.getByRole("button", { name: "Save group", exact: true }).click();
-    await addGroupDialog.waitFor({ state: "detached" });
-    await groupsDrawer.getByRole("row", { name: new RegExp(third) }).waitFor();
-
-    await groupsDrawer.getByRole("button", { name: `Actions for ${third}`, exact: true }).click();
-    await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
+    await page.getByRole("option", { name: "Create new group", exact: true }).click();
+    await groups.getByText(third, { exact: true }).waitFor();
+    await page.getByRole("option", { name: third, exact: true }).click();
     const deleteDialog = page.getByRole("dialog", { name: "Delete group?" });
     expect(row, "group-delete-confirmation-names-target", await deleteDialog.innerText(), (text) => text.includes(third) && text.includes("must be reassigned first"));
+    await deleteDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    expect(row, "group-delete-cancel-keeps-value", await groups.getByText(third, { exact: true }).count(), (count) => count === 1);
+    await groups.click();
+    await page.getByRole("option", { name: third, exact: true }).click();
     await deleteDialog.getByRole("button", { name: "Delete group", exact: true }).click();
-    await page.getByRole("row", { name: new RegExp(third) }).waitFor({ state: "detached" });
+    await deleteDialog.waitFor({ state: "detached" });
     await shot(page, row, "group-create-and-delete-recovered");
-    await groupsDrawer.getByRole("button", { name: "Close dialog" }).click();
 
     const colorLabel = `Edit ${nextName} calendar color`;
-    await page.getByRole("button", { name: colorLabel, exact: true }).click();
-    const colorSelect = page.getByLabel(`${nextName} calendar color`, { exact: true });
-    await colorSelect.waitFor();
-    await colorSelect.selectOption("teal");
+    await departmentRow.getByRole("combobox", { name: colorLabel, exact: true }).click();
+    const colorSearch = page.getByRole("combobox", { name: `Search ${nextName} calendar color`, exact: true });
+    const colorOptions = page.getByRole("listbox").last();
+    const colorPopup = colorOptions.locator("xpath=..");
+    await colorSearch.fill("Indigo");
+    const colorOption = colorOptions.getByRole("option", { name: "Indigo", exact: true });
+    await colorOption.waitFor();
     fixture.faults.set("POST /api/actions", { status: 503, remaining: 1, delay: 650, message: "coverage department color failed" });
-    await page.getByRole("button", { name: `Save ${nextName} calendar color`, exact: true }).click();
-    const colorError = departmentRow.getByRole("alert");
+    await colorOption.click();
+    const colorError = colorPopup.getByRole("alert");
     await colorError.waitFor();
-    expect(row, "department-color-error-retains-draft", { message: await colorError.innerText(), value: await colorSelect.inputValue() }, (state) => state.message.includes("coverage department color failed") && state.value === "teal");
-    await page.getByRole("button", { name: `Save ${nextName} calendar color`, exact: true }).click();
-    await page.getByRole("button", { name: colorLabel, exact: true }).waitFor();
+    expect(row, "department-color-error-retains-draft", { message: await colorError.innerText(), value: await colorSearch.inputValue() }, (state) => state.message.includes("coverage department color failed") && state.value === "Indigo");
+    await colorOption.click();
+    await colorPopup.waitFor({ state: "detached" });
+    await departmentRow.getByRole("combobox", { name: colorLabel, exact: true }).getByText(/indigo/i).waitFor();
     const persisted = await page.evaluate(async ({ api, id }) => {
       const response = await fetch(api + "/api/workspace");
       const state = await response.json();
       const item = state.catalog.departments.find((candidate) => candidate.id === id);
       return item && { name: item.name, groups: item.groups, color: item.color };
     }, { api: API, id: department.id });
-    expect(row, "department-groups-and-color-persisted", persisted, (value) => value.name === nextName && value.groups.includes(first) && value.groups.includes(second) && !value.groups.includes(third) && value.color === "teal");
+    expect(row, "department-groups-and-color-persisted", persisted, (value) => value.name === nextName && value.groups.includes(first) && value.groups.includes(second) && !value.groups.includes(third) && value.color === "indigo");
     expect(row, "department-actions-failures-injected-through-disposable-api", fixture.injected.filter((item) => item.key === "POST /api/actions" && item.status === 503).length === 3, Boolean);
+    await page.getByRole("checkbox", { name: `Select ${nextName}`, exact: true }).check();
+    await page.getByRole("button", { name: "Delete departments", exact: true }).click();
+    const departmentDelete = page.getByRole("dialog", { name: "Delete departments?", exact: true });
+    await departmentDelete.waitFor();
+    expect(row, "department-delete-confirmation-names-target", await departmentDelete.innerText(), (text) => text.includes(nextName));
+    await departmentDelete.getByRole("button", { name: "Delete departments", exact: true }).click();
+    await departmentDelete.waitFor({ state: "detached" });
+    expect(row, "department-delete-removes-row", await page.getByRole("combobox", { name: `Edit ${nextName} groups`, exact: true }).count(), (count) => count === 0);
     await shot(page, row, "department-final");
   });
 
-  await pageCase("tables.phone-members-departments-scrollcue-and-segmented-rects", "responsive", "narrow", async ({ row, page }) => {
+  await pageCase("tables.phone-members-departments-scrollcue-and-sidebar", "responsive", "narrow", async ({ row, page }) => {
     await page.goto(W + "/settings", { waitUntil: "domcontentloaded" });
     await ready(page);
-    const settingsSection = page.getByRole("group", { name: "Settings section" });
-    const settingsButtons = settingsSection.getByRole("button");
-    const segmentRects = await settingsButtons.evaluateAll((items) => items.map((node) => { const r = node.getBoundingClientRect(); return { label: node.textContent?.trim(), selected: node.getAttribute("aria-pressed"), x: r.x, y: r.y, width: r.width, height: r.height }; }));
-    expect(row, "settings-section-uses-rectangular-pressed-buttons", segmentRects, (items) => items.length === 2 && items.every((item) => item.width >= 36 && item.height >= 32 && item.x >= 0 && item.x + item.width <= 320) && items[0].selected === "true");
-    await settingsSection.getByRole("button", { name: "Departments", exact: true }).click();
+    expect(row, "settings-segmented-control-removed", await page.getByRole("group", { name: "Settings section" }).count(), (count) => count === 0);
+    await page.getByRole("button", { name: "Open navigation", exact: true }).click();
+    const settingsNavigation = page.getByRole("navigation", { name: "Settings", exact: true });
+    const settingsLinks = await settingsNavigation.getByRole("link").evaluateAll((items) => items.map((node) => { const rect = node.getBoundingClientRect(); return { label: node.textContent?.trim(), current: node.getAttribute("aria-current"), x: rect.x, width: rect.width, height: rect.height }; }));
+    expect(row, "settings-mobile-menu-shares-section-links", settingsLinks, (items) => items.length === 2 && items[0].label === "Members" && items[0].current === "page" && items[1].label === "Departments" && items.every((item) => item.x >= 0 && item.width >= 36 && item.height >= 32 && item.x + item.width <= 320));
+    await settingsNavigation.getByRole("link", { name: "Departments", exact: true }).click();
+    await page.getByRole("button", { name: "Open navigation", exact: true }).click();
+    expect(row, "settings-hash-selects-one-mobile-section", { active: await settingsNavigation.locator("a.active").count(), current: await settingsNavigation.locator('a[aria-current="page"]').allTextContents() }, (value) => value.active === 1 && value.current.length === 1 && value.current[0].trim() === "Departments");
+    await page.keyboard.press("Escape");
+    await page.getByRole("dialog").waitFor({ state: "detached" });
     const region = page.getByRole("region", { name: "Departments table. Scroll horizontally to see all columns." });
     await region.waitFor();
     const geometry = await region.evaluate((node) => ({
@@ -682,15 +678,11 @@ async function departmentManagementJourney() {
     }));
     expect(row, "phone-department-table-keeps-horizontal-scroll-region", geometry, (value) => value.clientWidth > 0 && value.scrollWidth > value.clientWidth && value.focusable && value.tableWidth >= value.scrollWidth - 2);
     expect(row, "phone-department-scroll-cue-visible", geometry.cueVisible, Boolean);
-    const updatedSegments = await settingsButtons.evaluateAll((items) => items.map((node) => ({ label: node.textContent?.trim(), selected: node.getAttribute("aria-pressed"), rect: (() => { const r = node.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; })() })));
-    expect(row, "settings-navigation-interaction-updates-pressed-state", updatedSegments, (items) => items[0].selected === "false" && items[1].selected === "true");
-    const membersButton = settingsSection.getByRole("button", { name: "Members", exact: true });
-    await membersButton.click();
+    await navigateSettingsSection(page, "Members");
     const memberRegion = page.getByRole("region", { name: "Members table; scroll horizontally to see all columns" });
     await memberRegion.waitFor();
     const memberGeometry = await memberRegion.evaluate((node) => ({ clientWidth: node.clientWidth, scrollWidth: node.scrollWidth, tableWidth: node.querySelector("table")?.getBoundingClientRect().width ?? 0, focusable: node.tabIndex >= 0, cue: document.body.innerText.includes("Scroll horizontally to see all member fields") }));
     expect(row, "phone-members-table-scroll-cue-and-region", memberGeometry, (value) => value.clientWidth > 0 && value.scrollWidth > value.clientWidth && value.tableWidth >= value.scrollWidth - 2 && value.focusable && value.cue);
-    expect(row, "segmented-options-have-valid-phone-rectangles", updatedSegments, (items) => items.every((item) => item.rect.x >= 0 && item.rect.width >= 36 && item.rect.height >= 32 && item.rect.x + item.rect.width <= 320));
     await memberRegion.focus();
     const keyboardAccessible = await memberRegion.evaluate((node) => ({ focused: document.activeElement === node, tabIndex: node.tabIndex, scrollLeft: node.scrollLeft }));
     expect(row, "table-region-keyboard-focusable-scroll-cue-target", keyboardAccessible, (value) => value.focused && value.tabIndex >= 0 && Number.isFinite(value.scrollLeft));
@@ -698,7 +690,13 @@ async function departmentManagementJourney() {
     const mobileNav = page.locator('nav[aria-label="All workspace pages"] .nav-item');
     await mobileNav.first().waitFor();
     const nav = await mobileNav.evaluateAll((items) => items.map((node) => { const r = node.getBoundingClientRect(); return { label: node.textContent?.trim(), x: r.x, y: r.y, width: r.width, height: r.height }; }));
-    expect(row, "mobile-navigation-links-have-visible-in-viewport-rectangles", nav, (items) => items.length >= 4 && items.every((item) => item.x >= 0 && item.y >= 0 && item.width >= 32 && item.height >= 32 && item.x + item.width <= 320 && item.y + item.height <= 844));
+    expect(row, "mobile-navigation-links-have-usable-width-and-touch-targets", nav, (items) => items.length >= 4 && items.every((item) => item.x >= 0 && item.width >= 32 && item.height >= 32 && item.x + item.width <= 320));
+    const reached = [];
+    for (const link of await mobileNav.all()) {
+      await link.scrollIntoViewIfNeeded();
+      reached.push(await link.evaluate((node) => { const rect = node.getBoundingClientRect(); return { label: node.textContent?.trim(), top: rect.top, bottom: rect.bottom, viewportHeight: innerHeight }; }));
+    }
+    expect(row, "mobile-navigation-long-menu-keeps-every-link-reachable", reached, (items) => items.every((item) => item.top >= 0 && item.bottom <= item.viewportHeight));
     await page.keyboard.press("Escape");
     const navRestore = await settledFocusRestore(page, 'button[aria-label="Open navigation"]');
     expect(row, "mobile-navigation-focus-restored-after-settled-close", navRestore, (value) => value.after60ms && value.after300ms);
@@ -718,96 +716,100 @@ async function catalogRoutingJourney() {
     expect(row, "department-and-groups-persisted", department, (item) => item.groups.includes(firstGroup) && item.groups.includes(secondGroup));
     await shot(page, row, "department-created");
 
-    await page.goto(W + "/requests", { waitUntil: "domcontentloaded" });
-    await ready(page);
-    await page.getByRole("button", { name: "Request options", exact: true }).click();
-    const catalogDialog = page.getByRole("dialog");
-    await catalogDialog.waitFor();
-    await shot(page, row, "catalog-options-open");
+    await page.goto(W + "/settings#public-request", { waitUntil: "domcontentloaded" });
+    await page.getByRole("heading", { name: "Public request", exact: true }).waitFor();
+    const catalogDialog = page.locator("section#public-request");
+    await shot(page, row, "catalog-settings-open");
     await catalogDialog.getByRole("button", { name: "Ministries", exact: true }).click();
-    await catalogDialog.getByRole("heading", { name: "Ministries", exact: true }).waitFor();
-    await shot(page, row, "catalog-ministry-tab");
     await catalogDialog.getByRole("button", { name: "New ministry", exact: true }).click();
-    await catalogDialog.getByLabel("New ministry name").fill(ministryName);
-    await catalogDialog.locator(".request-catalog-create-row").getByRole("button", { name: "Save", exact: true }).click();
-    await catalogDialog.locator(".request-catalog-create-row").waitFor({ state: "detached" });
+    const ministryDialog = page.getByRole("dialog", { name: "New ministry", exact: true });
+    await ministryDialog.getByLabel("New ministry name", { exact: true }).fill(ministryName);
+    await ministryDialog.getByRole("button", { name: "Create ministry", exact: true }).click();
+    await ministryDialog.waitFor({ state: "detached" });
     await catalogDialog.getByText(ministryName, { exact: true }).waitFor();
     await shot(page, row, "catalog-ministry-created");
-    const ministryReadLabel = `Edit ${ministryName} ministry name`;
-    const ministryReadButton = catalogDialog.getByRole("button", { name: ministryReadLabel, exact: true });
-    await ministryReadButton.waitFor({ state: "visible" });
-    await page.waitForFunction((label) => Array.from(document.querySelectorAll("button")).some((button) => button.getAttribute("aria-label") === label && !button.disabled), ministryReadLabel);
-    await ministryReadButton.click();
-    const ministryEditor = catalogDialog.getByLabel(`Ministry name for ${ministryName}`);
+    const ministryEditor = catalogDialog.getByRole("textbox", { name: `${ministryName} ministry name`, exact: true });
+    await ministryEditor.waitFor();
     await ministryEditor.fill("Discarded ministry draft");
     await ministryEditor.press("Escape");
     expect(row, "escape-cancels-ministry-cell-without-closing-parent", await catalogDialog.isVisible(), Boolean);
-    await catalogDialog.getByRole("button", { name: ministryReadLabel, exact: true }).waitFor();
-    await catalogDialog.getByRole("button", { name: ministryReadLabel, exact: true }).click();
+    await ministryEditor.fill(ministryName);
     const renamedMinistry = `${ministryName} Updated`;
-    await catalogDialog.getByLabel(`Ministry name for ${ministryName}`).fill(renamedMinistry);
-    await catalogDialog.getByRole("button", { name: `Save ${ministryName} ministry name`, exact: true }).click();
-    await catalogDialog.getByRole("button", { name: `Edit ${renamedMinistry} ministry name`, exact: true }).waitFor();
+    await ministryEditor.fill(renamedMinistry);
+    await ministryEditor.press("Enter");
+    await catalogDialog.getByRole("textbox", { name: `${renamedMinistry} ministry name`, exact: true }).waitFor();
     ministryName = renamedMinistry;
-    await catalogDialog.getByRole("button", { name: "Services", exact: true }).click();
-    await catalogDialog.getByRole("button", { name: "New service", exact: true }).click();
-    const serviceRow = catalogDialog.locator(".request-catalog-create-row");
-    await serviceRow.waitFor();
-    await catalogDialog.getByLabel("New service name").fill(serviceName);
-    await catalogDialog.getByLabel("New service department").selectOption(department.id);
-    await catalogDialog.getByLabel("New service group").selectOption({ label: firstGroup });
-    await serviceRow.getByRole("button", { name: "Save", exact: true }).click();
-    await serviceRow.waitFor({ state: "detached" });
+    await catalogDialog.getByRole("button", { name: "Request types", exact: true }).click();
+    await catalogDialog.getByRole("button", { name: "New request type", exact: true }).click();
+    const serviceDialog = page.getByRole("dialog", { name: "New request type", exact: true });
+    await serviceDialog.getByLabel("New request type name", { exact: true }).fill(serviceName);
+    await serviceDialog.getByLabel("New request type department", { exact: true }).selectOption(department.id);
+    await serviceDialog.getByLabel("New request type group", { exact: true }).selectOption({ label: firstGroup });
+    await serviceDialog.getByRole("button", { name: "Create request type", exact: true }).click();
+    await serviceDialog.waitFor({ state: "detached" });
     await catalogDialog.getByText(serviceName, { exact: true }).waitFor();
-    const serviceNameReadLabel = `Edit ${serviceName} service name`;
-    await catalogDialog.getByRole("button", { name: serviceNameReadLabel, exact: true }).click();
-    const serviceNameEditor = catalogDialog.getByLabel(`Service name for ${serviceName}`);
+    const otherServiceDepartment = await page.evaluate(async ({ api, currentId }) => {
+      const response = await fetch(api + "/api/workspace");
+      if (!response.ok) throw new Error("Isolated workspace read failed: " + response.status);
+      const state = await response.json();
+      return state.catalog.departments.find((item) => item.id !== currentId && item.groups?.length) ?? null;
+    }, { api: API, currentId: department.id });
+    if (!otherServiceDepartment) throw new Error("A second department with groups is required for service department remapping");
+    const serviceDepartmentLabel = `Edit ${serviceName} department`;
+    await catalogDialog.getByRole("combobox", { name: serviceDepartmentLabel, exact: true }).click();
+    const serviceDepartmentSearch = page.getByRole("combobox", { name: `Search ${serviceName} department`, exact: true });
+    await serviceDepartmentSearch.fill(otherServiceDepartment.name);
+    const otherDepartmentOption = page.getByRole("option", { name: new RegExp(`^${otherServiceDepartment.name}\\b`) });
+    await otherDepartmentOption.waitFor();
+    expect(row, "service-department-option-is-compact", await otherDepartmentOption.innerText(), (text) => text.trim() === otherServiceDepartment.name && !/Group:/i.test(text));
+    await otherDepartmentOption.click();
+    await catalogDialog.getByRole("combobox", { name: serviceDepartmentLabel, exact: true }).getByText(otherServiceDepartment.name, { exact: true }).waitFor();
+    await catalogDialog.getByRole("combobox", { name: serviceDepartmentLabel, exact: true }).click();
+    await page.getByRole("combobox", { name: `Search ${serviceName} department`, exact: true }).fill(departmentName);
+    await page.getByRole("option", { name: new RegExp(`^${departmentName}\\b`) }).click();
+    await catalogDialog.getByRole("combobox", { name: serviceDepartmentLabel, exact: true }).getByText(departmentName, { exact: true }).waitFor();
+    const serviceNameEditor = catalogDialog.getByRole("textbox", { name: `${serviceName} request type name`, exact: true });
+    await serviceNameEditor.waitFor();
     await serviceNameEditor.fill("Discarded service draft");
     await serviceNameEditor.press("Escape");
-    await catalogDialog.getByRole("button", { name: serviceNameReadLabel, exact: true }).waitFor();
-    await catalogDialog.getByRole("button", { name: serviceNameReadLabel, exact: true }).click();
+    await serviceNameEditor.fill(serviceName);
     const renamedService = `${serviceName} Updated`;
-    await catalogDialog.getByLabel(`Service name for ${serviceName}`).fill(renamedService);
-    await catalogDialog.getByLabel(`Service name for ${serviceName}`).press("Enter");
-    await catalogDialog.getByRole("button", { name: `Edit ${renamedService} service name`, exact: true }).waitFor();
+    await serviceNameEditor.fill(renamedService);
+    await serviceNameEditor.press("Enter");
+    await catalogDialog.getByRole("textbox", { name: `${renamedService} request type name`, exact: true }).waitFor();
     serviceName = renamedService;
     const airedRequirementLabel = `Edit ${serviceName} aired-date requirement`;
-    await catalogDialog.getByRole("button", { name: airedRequirementLabel, exact: true }).click();
-    const requiresDates = catalogDialog.getByRole("checkbox", { name: `Requires aired dates for ${serviceName}` });
-    await requiresDates.check();
-    await catalogDialog.getByRole("button", { name: `Save ${serviceName} aired-date requirement`, exact: true }).click();
-    await catalogDialog.getByRole("button", { name: airedRequirementLabel, exact: true }).waitFor();
+    await catalogDialog.getByRole("combobox", { name: airedRequirementLabel, exact: true }).click();
+    const airedSearch = page.getByRole("combobox", { name: `Search ${serviceName} aired-date requirement`, exact: true });
+    await airedSearch.waitFor();
+    expect(row, "aired-date-requirement-offers-both-values", await page.getByRole("option").allTextContents(), (values) => values.includes("Required") && values.includes("Not required"));
+    await page.getByRole("option", { name: "Required", exact: true }).click();
+    await catalogDialog.getByRole("combobox", { name: airedRequirementLabel, exact: true }).waitFor();
     const serviceGroupLabel = `Edit ${serviceName} group`;
-    await catalogDialog.getByRole("button", { name: serviceGroupLabel, exact: true }).click();
-    const serviceGroup = catalogDialog.getByLabel(`Group for ${serviceName}`);
-    await serviceGroup.selectOption({ label: secondGroup });
-    await serviceGroup.press("Escape");
-    expect(row, "escape-cancels-service-group-cell-without-closing-parent", await catalogDialog.isVisible(), Boolean);
-    await catalogDialog.getByRole("button", { name: serviceGroupLabel, exact: true }).waitFor();
+    await catalogDialog.getByRole("combobox", { name: serviceGroupLabel, exact: true }).click();
+    const serviceGroup = page.getByRole("combobox", { name: `Search ${serviceName} group`, exact: true });
+    await serviceGroup.waitFor();
+    await serviceGroup.fill(secondGroup);
+    await page.getByRole("option", { name: secondGroup, exact: true }).click();
+    await serviceGroup.waitFor({ state: "detached" });
     expect(row, "catalog-created-in-visible-list", await catalogDialog.innerText(), (text) => text.includes(ministryName) || text.includes(serviceName));
     await shot(page, row, "catalog-created");
-    await catalogDialog.getByRole("button", { name: "Close dialog" }).click();
 
-    const renamedGroup = "Studio Alpha Renamed";
-    const rename = await renameDepartmentGroup(page, department, firstGroup, renamedGroup);
-    expect(row, "group-rename-updates-service-mapping-atomically", rename, (saved) => saved.department?.groups.includes(renamedGroup) && !saved.oldNameStillPresent && saved.mappedServices.some((item) => item.name === serviceName && item.group === renamedGroup));
-    await shot(page, row, "group-renamed-service-mapping-updated");
-
-    await page.getByRole("button", { name: `Manage 2 groups for ${department.name}`, exact: true }).click();
-    const groupsDrawer = page.getByRole("dialog", { name: `${department.name} groups` });
-    await groupsDrawer.getByRole("button", { name: `Actions for ${renamedGroup}`, exact: true }).click();
-    await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
+    await page.goto(W + "/settings#departments", { waitUntil: "domcontentloaded" });
+    await ready(page);
+    const groups = page.getByRole("combobox", { name: `Edit ${department.name} groups`, exact: true });
+    await groups.click();
+    await page.getByRole("option", { name: secondGroup, exact: true }).click();
     const blockedDelete = page.getByRole("dialog", { name: "Delete group?" });
-    expect(row, "in-use-group-delete-confirmation-explains-reassignment", await blockedDelete.innerText(), (text) => text.includes(renamedGroup) && /reassigned first/i.test(text));
+    expect(row, "in-use-group-delete-confirmation-explains-reassignment", await blockedDelete.innerText(), (text) => text.includes(secondGroup) && /reassigned first/i.test(text));
     await blockedDelete.getByRole("button", { name: "Delete group", exact: true }).click();
     const blockedError = blockedDelete.getByRole("alert");
     await blockedError.waitFor();
-    expect(row, "in-use-group-delete-rejected-and-retained", { error: await blockedError.innerText(), rowCount: await page.locator(".modal-panel table tr").filter({ hasText: renamedGroup }).count() }, (value) => Boolean(value.error) && value.rowCount === 1);
+    expect(row, "in-use-group-delete-rejected", await blockedError.innerText(), (text) => /Reassign members, services, and tasks/.test(text));
     await shot(page, row, "in-use-group-delete-blocked");
     await blockedDelete.getByRole("button", { name: "Cancel", exact: true }).click();
     await blockedDelete.waitFor({ state: "detached" });
-    await groupsDrawer.getByRole("button", { name: "Close dialog" }).click();
-    await groupsDrawer.waitFor({ state: "detached" });
+    expect(row, "in-use-group-retained-after-rejected-delete", await groups.getByText(secondGroup, { exact: true }).count(), (count) => count === 1);
 
     const portal = await fixture.context.newPage();
     await formBasics(portal, requestTitle, true, row, new RegExp("^" + serviceName + "$"), ministryName);
@@ -815,6 +817,8 @@ async function catalogRoutingJourney() {
     await portal.getByRole("button", { name: "Send request", exact: true }).click();
     await portal.locator(".request-success").waitFor();
     expect(row, "public-request-receipt", await portal.locator(".request-success").innerText(), (text) => text.includes("We’ve got it.") && text.includes("Your access code"));
+    const privateAccessCode = (await portal.locator(".access-code").innerText()).trim();
+    expect(row, "private-access-code-format", privateAccessCode, (value) => /^MOC-/.test(value));
     const submitted = await portal.evaluate(async (api) => {
       const response = await fetch(api + "/api/workspace");
       if (!response.ok) throw new Error("Isolated workspace read failed: " + response.status);
@@ -826,25 +830,36 @@ async function catalogRoutingJourney() {
 
     await page.goto(W + "/requests", { waitUntil: "domcontentloaded" });
     await ready(page);
-    await page.getByRole("button", { name: "Request options", exact: true }).click();
-    const remapDialog = page.getByRole("dialog");
-    await remapDialog.getByRole("button", { name: `Edit ${serviceName} group`, exact: true }).click();
-    await remapDialog.getByLabel(`Group for ${serviceName}`).selectOption({ label: secondGroup });
-    await remapDialog.getByRole("button", { name: `Save ${serviceName} group`, exact: true }).click();
-    await remapDialog.getByRole("button", { name: `Edit ${serviceName} group`, exact: true }).waitFor();
+    const requestTable = page.locator(".requests-data-table");
+    const requestHeaders = (await requestTable.locator("thead th").allTextContents()).map((value) => value.trim());
+    expect(row, "request-table-uses-distinct-named-columns", requestHeaders, (headers) => headers.join("|") === "Task|Ministry|Service|Due date|Group|Department|Status");
+    const requestOpen = requestTrigger(page, requestTitle);
+    const requestRow = requestTable.locator("tbody tr").filter({ has: requestOpen });
+    await requestRow.waitFor();
+    expect(row, "request-table-omits-reference-and-private-code", { headers: requestHeaders, rowText: await requestRow.innerText() }, (value) => !value.headers.includes("Reference") && !value.rowText.includes(createdRequest.reference) && !value.rowText.includes(privateAccessCode));
+    expect(row, "request-row-title-is-an-explicit-open-control", await requestOpen.getAttribute("aria-label"), (label) => label === `Open ${requestTitle}`);
+    await page.getByRole("link", { name: "Public request settings", exact: true }).click();
+    await page.getByRole("heading", { name: "Public request", exact: true }).waitFor();
+    const remapDialog = page.locator("section#public-request");
+    await remapDialog.getByRole("combobox", { name: `Edit ${serviceName} group`, exact: true }).click();
+    const remapSearch = page.getByRole("combobox", { name: `Search ${serviceName} group`, exact: true });
+    await remapSearch.fill(firstGroup);
+    await page.getByRole("option", { name: firstGroup, exact: true }).click();
+    await remapSearch.waitFor({ state: "detached" });
     const stateAfterRemap = await page.evaluate(async (api) => {
       const response = await fetch(api + "/api/workspace");
       if (!response.ok) throw new Error("Isolated workspace read failed: " + response.status);
       return response.json();
     }, API);
     const savedService = stateAfterRemap.catalog.services.find((item) => item.name === serviceName);
-    expect(row, "saved-service-remapped-before-approval", savedService && { department: savedService.department, group: savedService.subTeam }, (mapping) => mapping.department === department.id && mapping.group === secondGroup);
+    expect(row, "saved-service-remapped-before-approval", savedService && { department: savedService.department, group: savedService.subTeam }, (mapping) => mapping.department === department.id && mapping.group === firstGroup);
     await shot(page, row, "service-remapped");
-    await remapDialog.getByRole("button", { name: "Close dialog" }).click();
+    await page.goto(W + "/requests", { waitUntil: "domcontentloaded" });
+    await ready(page);
 
-    const pending = page.locator(".request-row").filter({ hasText: requestTitle });
+    const pending = page.locator(".request-row").filter({ has: requestOpen });
     await pending.waitFor();
-    await pending.click();
+    await requestOpen.click();
     const detail = page.getByRole("dialog");
     await detail.getByRole("button", { name: "Approve and route", exact: true }).click();
     await detail.waitFor({ state: "detached" });
@@ -852,22 +867,23 @@ async function catalogRoutingJourney() {
     await ready(page);
     const card = page.locator(".task-card").filter({ hasText: requestTitle });
     await card.waitFor();
-    expect(row, "approved-task-routed-to-remapped-department-group", await card.innerText(), (text) => text.includes(secondGroup) && text.includes(ministryName));
+    expect(row, "approved-task-routed-to-remapped-department-group", await card.innerText(), (text) => text.includes(firstGroup) && text.includes(ministryName));
     const finalState = await page.evaluate(async (api) => {
       const response = await fetch(api + "/api/workspace");
       if (!response.ok) throw new Error("Isolated workspace read failed: " + response.status);
       return response.json();
     }, API);
     const routed = finalState.tasks.filter((task) => task.title === requestTitle);
-    expect(row, "exactly-one-auto-routed-task", routed.map(({ department: routedDepartment, subTeam }) => ({ department: routedDepartment, subTeam })), (tasks) => tasks.length === 1 && tasks[0].department === department.id && tasks[0].subTeam === secondGroup);
+    expect(row, "exactly-one-auto-routed-task", routed.map(({ department: routedDepartment, subTeam }) => ({ department: routedDepartment, subTeam })), (tasks) => tasks.length === 1 && tasks[0].department === department.id && tasks[0].subTeam === firstGroup);
     await shot(page, row, "approved-auto-routed");
   });
 }
 
 async function memberManagementJourney() {
   await pageCase("members.invite-edit-duty-groups-leadership", "members", "desktop", async ({ row, fixture, page }) => {
-    let memberName = "Coverage Invited Member";
+    let memberName = "Grace Ndlovu";
     const email = "coverage-invited@example.org";
+    const memberEmail = "grace.sound@example.org";
     const departmentName = "Coverage Members";
     const department = await createDepartmentAndGroups(page, departmentName, "Member Alpha", "Member Beta");
     await page.goto(W + "/settings#members", { waitUntil: "domcontentloaded" });
@@ -907,27 +923,62 @@ async function memberManagementJourney() {
     expect(row, "invitation-not-reported-as-email-sent", await page.locator(".members-invite-ready").innerText(), (text) => /No email was sent/.test(text) && text.includes(email));
     await shot(page, row, "invite-recovered");
 
-    const memberRow = page.locator(".members-row").filter({ hasText: email });
+    const memberRow = page.getByRole("row").filter({ hasText: memberEmail });
     await memberRow.waitFor();
-    const nameLabel = `Edit ${memberName} name`;
-    await memberRow.getByRole("button", { name: nameLabel, exact: true }).click();
     const memberNameEditor = memberRow.getByLabel(`Name for ${memberName}`);
+    expect(row, "member-name-cell-is-persistent-single-line-textbox", {
+      role: await memberNameEditor.getAttribute("role"),
+      contentEditable: await memberNameEditor.getAttribute("contenteditable"),
+      multiline: await memberNameEditor.getAttribute("aria-multiline"),
+    }, (value) => value.role === "textbox" && value.contentEditable === "true" && value.multiline === "false");
     await memberNameEditor.fill("Discarded name draft");
     await memberNameEditor.press("Escape");
-    await memberRow.getByRole("button", { name: nameLabel, exact: true }).waitFor();
-    await memberRow.getByRole("button", { name: nameLabel, exact: true }).click();
+    expect(row, "member-name-escape-restores-baseline", await memberNameEditor.innerText(), (text) => text === memberName);
+    await memberNameEditor.focus();
+    const tabbedName = `${memberName} Tabbed`;
+    await memberNameEditor.fill(tabbedName);
+    await memberNameEditor.press("Tab");
+    await memberRow.getByLabel(`Name for ${tabbedName}`).waitFor();
+    memberName = tabbedName;
+    const tabFocusLabel = `Edit ${memberName} duty`;
+    await page.waitForTimeout(60);
+    const tabFocus60 = await page.evaluate(() => document.activeElement?.getAttribute("aria-label"));
+    await page.waitForTimeout(300);
+    const tabFocus300 = await page.evaluate(() => document.activeElement?.getAttribute("aria-label"));
+    expect(row, "member-name-tab-commit-focus-at-60ms", tabFocus60, (label) => label === tabFocusLabel);
+    expect(row, "member-name-tab-commit-focus-stable-at-300ms", tabFocus300, (label) => label === tabFocusLabel);
+
     const renamedMember = `${memberName} Updated`;
-    await memberRow.getByLabel(`Name for ${memberName}`).fill(renamedMember);
-    await memberRow.getByLabel(`Name for ${memberName}`).press("Enter");
-    await memberRow.getByRole("button", { name: `Edit ${renamedMember} name`, exact: true }).waitFor();
+    const renamedMemberEditor = memberRow.getByLabel(`Name for ${memberName}`);
+    await renamedMemberEditor.fill(renamedMember);
+    fixture.faults.set("POST /api/actions", { status: 503, remaining: 1, delay: 650, message: "coverage member name failed" });
+    await renamedMemberEditor.press("Enter");
+    const nameError = memberRow.getByRole("alert");
+    await nameError.waitFor();
+    expect(row, "member-name-error-preserves-editable-draft", {
+      error: await nameError.innerText(),
+      draft: await renamedMemberEditor.innerText(),
+      busy: await renamedMemberEditor.getAttribute("aria-busy"),
+    }, (value) => value.error.includes("coverage member name failed") && value.draft === renamedMember && value.busy !== "true");
+    await shot(page, row, "member-name-error-draft");
+    await renamedMemberEditor.press("Enter");
+    await memberRow.getByLabel(`Name for ${renamedMember}`).waitFor();
     memberName = renamedMember;
     const dutyLabel = `Edit ${memberName} duty`;
-    await memberRow.getByRole("button", { name: dutyLabel, exact: true }).click();
-    const duty = memberRow.getByLabel(`Duty for ${memberName}`);
+    await memberRow.getByRole("combobox", { name: dutyLabel, exact: true }).click();
+    const duty = page.getByRole("combobox", { name: `Search ${memberName} duty`, exact: true });
     await duty.waitFor();
-    await duty.fill("Discarded inline duty");
+    const dutyPopup = page.getByRole("listbox").last();
+    const originalDuty = await memberRow.locator('td[data-label="Duty"]').innerText();
+    await duty.fill(originalDuty);
+    const duplicateDutyOption = dutyPopup.getByRole("option", { name: "Create new duty", exact: true });
+    await duplicateDutyOption.waitFor();
+    expect(row, "member-duty-duplicate-create-disabled", {
+      createLabel: await duplicateDutyOption.innerText(),
+      disabled: await duplicateDutyOption.getAttribute("aria-disabled"),
+    }, (value) => value.createLabel === "Create new duty" && value.disabled === "true");
     await duty.press("Escape");
-    await memberRow.getByRole("button", { name: dutyLabel, exact: true }).waitFor();
+    await memberRow.getByRole("combobox", { name: dutyLabel, exact: true }).waitFor();
     await page.waitForTimeout(60);
     const escapeFocus60 = await page.evaluate(() => document.activeElement?.getAttribute("aria-label"));
     await page.waitForTimeout(300);
@@ -935,21 +986,29 @@ async function memberManagementJourney() {
     expect(row, "member-duty-escape-focus-at-60ms", escapeFocus60, (label) => label === dutyLabel);
     expect(row, "member-duty-escape-focus-stable-at-300ms", escapeFocus300, (label) => label === dutyLabel);
 
-    await memberRow.getByRole("button", { name: dutyLabel, exact: true }).click();
+    await memberRow.getByRole("combobox", { name: dutyLabel, exact: true }).click();
+    await duty.fill("Discarded inline duty");
+    await duty.press("Escape");
+    await memberRow.getByRole("combobox", { name: dutyLabel, exact: true }).waitFor();
+
+    await memberRow.getByRole("combobox", { name: dutyLabel, exact: true }).click();
     await duty.fill("Production lead");
     fixture.faults.set("POST /api/actions", { status: 503, remaining: 1, delay: 650, message: "coverage member duty failed" });
-    await memberRow.getByRole("button", { name: `Save ${memberName} duty`, exact: true }).click();
-    const dutyEditor = inlineEditContainer(duty);
+    const productionDutyOption = dutyPopup.getByRole("option", { name: "Create new duty", exact: true });
+    await duty.press("ArrowDown");
+    await duty.press("Enter");
+    const dutyEditor = page.getByRole("listbox").last().locator("xpath=..");
     await dutyEditor.waitFor();
     expect(row, "member-duty-editor-busy", await dutyEditor.getAttribute("aria-busy"), (value) => value === "true");
-    expect(row, "member-duty-save-cancel-disabled-while-saving", await memberRow.getByRole("button", { name: `Save ${memberName} duty`, exact: true }).isDisabled() && await memberRow.getByRole("button", { name: `Cancel editing ${memberName} duty`, exact: true }).isDisabled(), Boolean);
+    expect(row, "member-duty-search-disabled-while-saving", await duty.isDisabled(), Boolean);
     await shot(page, row, "duty-busy");
     const dutyError = dutyEditor.getByRole("alert");
     await dutyError.waitFor();
     expect(row, "member-duty-error-preserves-retry-draft", { error: await dutyError.innerText(), value: await duty.inputValue() }, (value) => value.error.includes("coverage member duty failed") && value.value === "Production lead");
     await shot(page, row, "duty-error-draft");
-    await memberRow.getByRole("button", { name: `Save ${memberName} duty`, exact: true }).click();
-    await memberRow.getByRole("button", { name: dutyLabel, exact: true }).waitFor();
+    await productionDutyOption.click();
+    await dutyPopup.waitFor({ state: "detached" });
+    await memberRow.getByRole("combobox", { name: dutyLabel, exact: true }).getByText("Production lead", { exact: true }).waitFor();
     await page.waitForTimeout(60);
     const saveFocus60 = await page.evaluate(() => document.activeElement?.getAttribute("aria-label"));
     await page.waitForTimeout(300);
@@ -958,52 +1017,86 @@ async function memberManagementJourney() {
     expect(row, "member-duty-save-focus-stable-at-300ms", saveFocus300, (label) => label === dutyLabel);
 
     const departmentLabel = `Edit ${memberName} department`;
-    await memberRow.getByRole("button", { name: departmentLabel, exact: true }).click();
-    const departmentSelect = memberRow.getByLabel(`Department for ${memberName}`);
-    await departmentSelect.waitFor();
-    await departmentSelect.selectOption(department.id);
-    expect(row, "member-department-previews-atomic-group-assignment", await memberRow.locator(".members-department-group-preview").innerText(), (text) => text.includes("Groups will be set to Member Alpha"));
+    await memberRow.getByRole("combobox", { name: departmentLabel, exact: true }).click();
+    const departmentSearch = page.getByRole("combobox", { name: `Search ${memberName} department`, exact: true });
+    await departmentSearch.waitFor();
+    const departmentOptions = page.getByRole("listbox").last();
+    const departmentPopup = departmentOptions.locator("xpath=..");
+    await departmentSearch.fill(departmentName);
+    const departmentOption = departmentOptions.getByRole("option", { name: new RegExp(departmentName) });
+    await departmentOption.waitFor();
+    expect(row, "member-department-option-is-compact", await departmentOption.innerText(), (text) => text.trim() === departmentName && !/Groups:/i.test(text));
     fixture.faults.set("POST /api/actions", { status: 503, remaining: 1, delay: 650, message: "coverage member department failed" });
-    await memberRow.getByRole("button", { name: `Save ${memberName} department`, exact: true }).click();
-    const departmentError = inlineEditContainer(departmentSelect).getByRole("alert");
+    await departmentOption.click();
+    const departmentError = departmentPopup.getByRole("alert");
     await departmentError.waitFor();
-    expect(row, "member-department-error-preserves-selection", { error: await departmentError.innerText(), value: await departmentSelect.inputValue() }, (value) => value.error.includes("coverage member department failed") && value.value === department.id);
+    expect(row, "member-department-error-preserves-selection", { error: await departmentError.innerText(), value: await departmentSearch.inputValue() }, (value) => value.error.includes("coverage member department failed") && value.value === departmentName);
     await shot(page, row, "department-error-draft");
-    await memberRow.getByRole("button", { name: `Save ${memberName} department`, exact: true }).click();
-    await memberRow.getByRole("button", { name: departmentLabel, exact: true }).waitFor();
+    await departmentOption.click();
+    await departmentPopup.waitFor({ state: "detached" });
+    await memberRow.getByRole("combobox", { name: departmentLabel, exact: true }).getByText(departmentName, { exact: true }).waitFor();
 
     const groupsLabel = `Edit ${memberName} groups`;
-    await memberRow.getByRole("button", { name: groupsLabel, exact: true }).click();
-    const groups = memberRow.getByRole("group", { name: `Groups for ${memberName}` });
-    await groups.waitFor();
-    const alpha = groups.getByRole("checkbox", { name: "Member Alpha", exact: true });
-    const beta = groups.getByRole("checkbox", { name: "Member Beta", exact: true });
-    await alpha.uncheck();
-    await memberRow.getByRole("button", { name: `Save ${memberName} groups`, exact: true }).click();
-    const emptyGroupsError = inlineEditContainer(groups).getByRole("alert");
+    await memberRow.getByRole("combobox", { name: groupsLabel, exact: true }).click();
+    const groupsSearch = page.getByRole("combobox", { name: `Search ${memberName} groups`, exact: true });
+    const groupsOptions = page.getByRole("listbox").last();
+    const groupsPopup = groupsOptions.locator("xpath=..");
+    await groupsSearch.waitFor();
+    await groupsSearch.fill("Member Alpha");
+    const alpha = groupsOptions.getByRole("option", { name: "Member Alpha", exact: true });
+    await alpha.waitFor();
+    await alpha.click();
+    const emptyGroupsError = groupsPopup.getByRole("alert");
     await emptyGroupsError.waitFor();
-    expect(row, "member-groups-require-at-least-one-selection", { error: await emptyGroupsError.innerText(), selected: await groups.getByRole("checkbox").evaluateAll((nodes) => nodes.filter((node) => node.checked).length) }, (value) => value.error.includes("Choose at least one group") && value.selected === 0);
-    await alpha.check();
-    await beta.check();
-    await beta.press("Escape");
-    await memberRow.getByRole("button", { name: groupsLabel, exact: true }).waitFor();
-    expect(row, "member-groups-escape-discards-draft", await memberRow.innerText(), (text) => text.includes("Member Alpha") && !text.includes("Member Beta"));
+    expect(row, "member-groups-require-at-least-one-selection", { error: await emptyGroupsError.innerText(), query: await groupsSearch.inputValue() }, (value) => value.error.includes("Choose at least one group") && value.query === "Member Alpha");
+    await groupsSearch.press("Escape");
+    await memberRow.getByRole("combobox", { name: groupsLabel, exact: true }).waitFor();
 
-    await memberRow.getByRole("button", { name: groupsLabel, exact: true }).click();
-    const groupsRetry = memberRow.getByRole("group", { name: `Groups for ${memberName}` });
-    await groupsRetry.getByRole("checkbox", { name: "Member Alpha", exact: true }).uncheck();
-    await groupsRetry.getByRole("checkbox", { name: "Member Beta", exact: true }).check();
+    await memberRow.getByRole("combobox", { name: groupsLabel, exact: true }).click();
+    const groupsRetry = page.getByRole("combobox", { name: `Search ${memberName} groups`, exact: true });
+    const groupsRetryOptions = page.getByRole("listbox").last();
+    const groupsRetryPopup = groupsRetryOptions.locator("xpath=..");
+    await groupsRetry.waitFor();
+    await groupsRetry.fill("Member Gamma");
+    const createGroup = groupsRetryOptions.getByRole("option", { name: "Create new group", exact: true });
+    await createGroup.waitFor();
+    expect(row, "member-group-create-footer-is-concise", await createGroup.innerText(), (text) => text.trim() === "Create new group");
     fixture.faults.set("POST /api/actions", { status: 503, remaining: 1, delay: 650, message: "coverage member groups failed" });
-    await memberRow.getByRole("button", { name: `Save ${memberName} groups`, exact: true }).click();
-    const groupsError = inlineEditContainer(groupsRetry).getByRole("alert");
+    await createGroup.click();
+    const groupsError = groupsRetryPopup.getByRole("alert");
     await groupsError.waitFor();
-    expect(row, "member-groups-error-preserves-checkbox-draft", { error: await groupsError.innerText(), alpha: await groupsRetry.getByRole("checkbox", { name: "Member Alpha", exact: true }).isChecked(), beta: await groupsRetry.getByRole("checkbox", { name: "Member Beta", exact: true }).isChecked() }, (value) => value.error.includes("coverage member groups failed") && !value.alpha && value.beta);
+    expect(row, "member-groups-error-preserves-create-draft", { error: await groupsError.innerText(), query: await groupsRetry.inputValue() }, (value) => value.error.includes("coverage member groups failed") && value.query === "Member Gamma");
     await shot(page, row, "groups-error-draft");
-    await memberRow.getByRole("button", { name: `Save ${memberName} groups`, exact: true }).click();
-    await memberRow.getByRole("button", { name: groupsLabel, exact: true }).waitFor();
+    await createGroup.click();
+    await memberRow.getByRole("combobox", { name: groupsLabel, exact: true }).getByText("Member Gamma", { exact: true }).waitFor();
+    await groupsRetry.fill("Member Gamma");
+    const duplicateGroupOption = groupsRetryPopup.getByRole("option", { name: "Create new group", exact: true });
+    await duplicateGroupOption.waitFor();
+    expect(row, "member-group-duplicate-create-disabled", {
+      createLabel: await duplicateGroupOption.innerText(),
+      disabled: await duplicateGroupOption.getAttribute("aria-disabled"),
+    }, (value) => value.createLabel === "Create new group" && value.disabled === "true");
+    await groupsRetry.press("Escape");
+    await memberRow.getByRole("combobox", { name: groupsLabel, exact: true }).waitFor();
+
+    await memberRow.getByRole("combobox", { name: groupsLabel, exact: true }).click();
+    const groupsSelection = page.getByRole("combobox", { name: `Search ${memberName} groups`, exact: true });
+    const groupsSelectionPopup = page.getByRole("listbox").last();
+    await groupsSelection.fill("Member Beta");
+    await groupsSelectionPopup.getByRole("option", { name: "Member Beta", exact: true }).click();
+    await memberRow.getByRole("combobox", { name: groupsLabel, exact: true }).getByText("Member Beta", { exact: true }).waitFor();
+    await groupsSelection.fill("Member Alpha");
+    await groupsSelectionPopup.getByRole("option", { name: "Member Alpha", exact: true }).click();
+    await page.waitForFunction((label) => {
+      const trigger = document.querySelector(`[aria-label="${CSS.escape(label)}"]`);
+      const value = trigger?.textContent ?? "";
+      return value.includes("Member Beta") && value.includes("Member Gamma") && !value.includes("Member Alpha");
+    }, groupsLabel);
+    await groupsSelection.press("Escape");
+    await memberRow.getByRole("combobox", { name: groupsLabel, exact: true }).waitFor();
 
     const leaderSwitch = memberRow.getByRole("switch", { name: memberName + " leader role" });
-    expect(row, "member-duty-department-and-groups-updated", await memberRow.innerText(), (text) => text.includes("Production lead") && text.includes(departmentName) && text.includes("Member Beta") && !text.includes("Member Alpha"));
+    expect(row, "member-duty-department-and-groups-updated", await memberRow.innerText(), (text) => text.includes("Production lead") && text.includes(departmentName) && text.includes("Member Beta") && text.includes("Member Gamma") && !text.includes("Member Alpha"));
     await leaderSwitch.focus();
     await leaderSwitch.press("Space");
     await page.waitForFunction((name) => document.querySelector(`input[role="switch"][aria-label="${name} leader role"]`)?.getAttribute("aria-checked") === "false", memberName);
@@ -1022,9 +1115,10 @@ async function memberManagementJourney() {
       if (!response.ok) throw new Error("Isolated workspace read failed: " + response.status);
       return response.json();
     }, API);
-    const saved = finalState.users.find((member) => member.email === email);
-    expect(row, "member-contract-persisted", saved && { name: saved.name, duty: saved.duty, department: saved.department, groups: saved.groups, isLeader: saved.isLeader, approved: saved.approved }, (member) => member.name === memberName && member.duty === "Production lead" && member.department === department.id && member.groups.length === 1 && member.groups[0] === "Member Beta" && !member.isLeader && member.approved);
-    expect(row, "three-inline-member-save-failures-were-injected", fixture.injected.filter((item) => item.key === "POST /api/actions" && item.status === 503).length >= 4, Boolean);
+    const saved = finalState.users.find((member) => member.email === memberEmail);
+    const savedDepartment = finalState.catalog.departments.find((item) => item.id === department.id);
+    expect(row, "member-contract-persisted", saved && { name: saved.name, duty: saved.duty, department: saved.department, groups: saved.groups, isLeader: saved.isLeader, approved: saved.approved, catalogGroups: savedDepartment?.groups }, (member) => member.name === memberName && member.duty === "Production lead" && member.department === department.id && member.groups.includes("Member Beta") && member.groups.includes("Member Gamma") && !member.groups.includes("Member Alpha") && member.catalogGroups.includes("Member Gamma") && !member.isLeader && member.approved);
+    expect(row, "member-cell-failures-were-injected", fixture.injected.filter((item) => item.key === "POST /api/actions" && item.status === 503).length >= 5, Boolean);
     await shot(page, row, "member-updated");
   });
 }
@@ -1081,6 +1175,10 @@ async function portalBranches() {
     await shot(page, row, "review");
   });
   await pageCase("portal.tracking.pending-and-clipboard-denied", "portal", "desktop", async ({ row, fixture, page }) => {
+    const trackRequests = [];
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname === "/api/track") trackRequests.push(request.method());
+    });
     await fixture.context.addInitScript(() => { Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async () => { throw new Error("denied"); } } }); });
     await formBasics(page, "coverage tracking privacy", false, row);
     await page.getByRole("button", { name: "Send request", exact: true }).click();
@@ -1095,9 +1193,28 @@ async function portalBranches() {
     await page.locator(".tracking-summary").waitFor();
     expect(row, "pending-edit-enabled", await page.getByRole("button", { name: "Save changes", exact: true }).count(), (n) => n === 1);
     expect(row, "tracking-code-not-in-url", page.url(), (x) => !x.includes(code));
+    expect(row, "pending-status-only", await page.locator(".tracking-summary").innerText(), (text) => /Awaiting review/.test(text) && !/\d+%/.test(text));
     await shot(page, row, "pending");
+    const callsBeforeReference = trackRequests.length;
+    await page.locator("#tracking-code").fill("MOC-2026-0001");
+    await page.getByRole("button", { name: "Search", exact: true }).click();
+    const referenceError = page.getByRole("alert");
+    await referenceError.waitFor();
+    expect(row, "request-reference-explains-private-code", await referenceError.innerText(), (text) => /request reference/.test(text) && /private access code/.test(text));
+    const referenceErrorPosition = await referenceError.evaluate((alert) => {
+      const form = document.querySelector(".track-form");
+      if (!form) return { below: false, described: false };
+      const formRect = form.getBoundingClientRect();
+      const alertRect = alert.getBoundingClientRect();
+      const input = form.querySelector("#tracking-code");
+      const describedBy = input?.getAttribute("aria-describedby")?.split(/\s+/) ?? [];
+      return { below: alertRect.top >= formRect.bottom - 1, described: describedBy.includes(alert.id) };
+    });
+    expect(row, "tracking-error-is-described-below-form", referenceErrorPosition, (value) => value.below && value.described);
+    expect(row, "request-reference-never-submitted-as-access-code", trackRequests.length - callsBeforeReference, (count) => count === 0);
+    await shot(page, row, "request-reference-error-below-form");
   });
-  await pageCase("portal.tracking.approved-progress-complete-rejected", "portal", "desktop", async ({ row, fixture }) => {
+  await pageCase("portal.tracking.approved-in-progress-complete-rejected", "portal", "desktop", async ({ row, fixture }) => {
     const portal = await fixture.context.newPage();
     await formBasics(portal, "coverage terminal status approved", false, row, /Video creation/i);
     await portal.getByRole("button", { name: "Send request", exact: true }).click();
@@ -1107,7 +1224,7 @@ async function portalBranches() {
     await workspace.goto(W, { waitUntil: "domcontentloaded" });
     await ready(workspace);
     await workspace.goto(W + "/requests", { waitUntil: "domcontentloaded" });
-    await workspace.locator(".request-row").filter({ hasText: "coverage terminal status approved" }).click();
+    await requestTrigger(workspace, "coverage terminal status approved").click();
     await workspace.getByRole("button", { name: "Approve and route" }).click();
     await workspace.getByRole("heading", { name: "Requests" }).waitFor();
     await portal.goto(P, { waitUntil: "domcontentloaded" });
@@ -1115,19 +1232,19 @@ async function portalBranches() {
     await portal.getByLabel("Private access code").fill(approvedCode);
     await portal.getByRole("button", { name: "Search", exact: true }).click();
     await portal.locator(".tracking-summary").waitFor();
-    expect(row, "approved-not-started-branch", await portal.locator(".tracking-summary").innerText(), (x) => /Approved/.test(x) && /0% complete/.test(x));
+    expect(row, "approved-not-started-branch", await portal.locator(".tracking-summary").innerText(), (x) => /Approved/.test(x) && !/\d+%/.test(x));
     await shot(portal, row, "approved");
     await workspace.goto(W + "/departments/visual-media", { waitUntil: "domcontentloaded" });
     await workspace.locator(".task-card-open").filter({ hasText: "coverage terminal status approved" }).click();
-    await workspace.getByRole("button", { name: "25%", exact: true }).click();
+    await workspace.getByRole("button", { name: "In progress", exact: true }).click();
     await workspace.getByRole("heading", { name: "Visual Media" }).waitFor();
     await portal.getByLabel("Private access code").fill(approvedCode);
     await portal.getByRole("button", { name: "Search", exact: true }).click();
     await portal.locator(".tracking-summary").waitFor();
-    expect(row, "approved-in-progress-branch", await portal.locator(".tracking-summary").innerText(), (x) => /In progress/.test(x) && /25%/.test(x));
+    expect(row, "approved-in-progress-branch", await portal.locator(".tracking-summary").innerText(), (x) => /In progress/.test(x) && !/\d+%/.test(x));
     await shot(portal, row, "in-progress");
     await workspace.locator(".task-card-open").filter({ hasText: "coverage terminal status approved" }).click();
-    await workspace.getByRole("button", { name: "100%", exact: true }).click();
+    await workspace.getByRole("button", { name: "Complete", exact: true }).click();
     await workspace.getByRole("heading", { name: "Visual Media" }).waitFor();
     await portal.getByLabel("Private access code").fill(approvedCode);
     await portal.getByRole("button", { name: "Search", exact: true }).click();
@@ -1140,10 +1257,10 @@ async function portalBranches() {
     await rejected.locator(".request-success").waitFor();
     const rejectedCode = (await rejected.locator(".access-code").innerText()).trim();
     await workspace.goto(W + "/requests", { waitUntil: "domcontentloaded" });
-    await workspace.locator(".request-row").filter({ hasText: "coverage terminal status rejected" }).click();
+    await requestTrigger(workspace, "coverage terminal status rejected").click();
     await workspace.getByRole("button", { name: "Reject request" }).click();
     await workspace.getByLabel("Reason for rejection").fill("Please clarify the requested delivery format.");
-    await workspace.getByRole("button", { name: "Return request" }).click();
+    await workspace.getByRole("button", { name: "Reject request" }).click();
     await workspace.getByRole("heading", { name: "Requests" }).waitFor();
     await rejected.goto(P, { waitUntil: "domcontentloaded" });
     await rejected.getByRole("button", { name: /Track a submission/i }).click();
@@ -1155,6 +1272,79 @@ async function portalBranches() {
   });
 }
 
+async function lifecycleCoverage() {
+  await pageCase("lifecycle.rejected-request-can-be-approved", "lifecycle", "desktop", async ({ row, page }) => {
+    await page.goto(W + "/requests", { waitUntil: "domcontentloaded" });
+    await ready(page);
+    const filters = page.getByRole("group", { name: "Filter requests by status", exact: true });
+    await filters.getByRole("button", { name: /^Rejected · \d+$/ }).click();
+    const open = page.locator(".requests-data-table tbody").getByRole("button", { name: /^Open / }).first();
+    const title = (await open.innerText()).trim();
+    const before = await page.evaluate(async (api) => fetch(api + "/api/workspace").then((response) => response.json()), API);
+    const original = before.requests.find((request) => request.title === title);
+    await open.click();
+    const detail = page.getByRole("dialog", { name: "Request details", exact: true });
+    await detail.waitFor();
+    expect(row, "rejected-request-offers-approval-only", { approve: await detail.getByRole("button", { name: "Approve and route", exact: true }).count(), reject: await detail.getByRole("button", { name: "Reject request", exact: true }).count() }, (value) => value.approve === 1 && value.reject === 0);
+    await detail.getByRole("button", { name: "Approve and route", exact: true }).click();
+    await detail.waitFor({ state: "detached" });
+    const after = await page.evaluate(async (api) => fetch(api + "/api/workspace").then((response) => response.json()), API);
+    const saved = after.requests.find((request) => request.id === original.id);
+    const task = after.tasks.find((task) => task.requestId === original.id);
+    expect(row, "rejected-request-becomes-approved-and-routed-once", { status: saved.status, tasks: after.tasks.filter((item) => item.requestId === original.id).length, taskStatus: task?.status }, (value) => value.status === "approved" && value.tasks === 1 && value.taskStatus === "pending");
+    expect(row, "decision-history-retains-rejection-and-records-approval", saved.lifecycle, (value) => value.rejectedAt === original.lifecycle.rejectedAt && Number.isFinite(Date.parse(value.approvedAt)) && value.receivedAt === original.lifecycle.receivedAt);
+    const resetStatus = await page.evaluate(async ({ api, requestId }) => fetch(api + "/api/actions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "update-request", requestId, status: "backlog" }) }).then((response) => response.status), { api: API, requestId: saved.id });
+    expect(row, "reviewed-request-cannot-return-to-backlog", resetStatus, (status) => status === 400);
+    await filters.getByRole("button", { name: /^Approved · \d+$/ }).click();
+    await page.getByRole("button", { name: `Open ${title}`, exact: true }).waitFor();
+    await shot(page, row, "approved-after-rejection");
+  });
+
+  await pageCase("lifecycle.report-milestones-and-widgets", "lifecycle", "desktop", async ({ row, fixture, page }) => {
+    const now = new Date();
+    const date = (day) => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), day, 10)).toISOString();
+    await patchWorkspace(fixture.context, fixture.api.url, (data) => {
+      const sourceRequest = data.requests[0];
+      const sourceTask = data.tasks[0];
+      const fullLifecycle = { receivedAt: date(1), approvedAt: date(2), inProgressAt: date(3), completedAt: date(5) };
+      data.requests = [
+        { ...sourceRequest, id: "coverage-request-complete", taskId: "coverage-task-complete", title: "Coverage complete lifecycle", createdAt: date(1), updatedAt: date(5), dueAt: date(10), status: "approved", lifecycle: fullLifecycle },
+        { ...sourceRequest, id: "coverage-request-rejected", taskId: undefined, title: "Coverage rejected lifecycle", createdAt: date(1), updatedAt: date(2), dueAt: date(10), status: "rejected", lifecycle: { receivedAt: date(1), rejectedAt: date(2) } },
+        { ...sourceRequest, id: "coverage-request-backlog", taskId: undefined, title: "Coverage backlog lifecycle", createdAt: date(3), updatedAt: date(3), dueAt: date(10), status: "backlog", lifecycle: { receivedAt: date(3) } },
+      ];
+      data.tasks = [{ ...sourceTask, id: "coverage-task-complete", requestId: "coverage-request-complete", title: "Coverage complete lifecycle", ministry: sourceRequest.ministry, service: sourceRequest.service, createdAt: date(2), dueAt: date(10), status: "completed", lifecycle: fullLifecycle, privateNotes: [] }];
+      data.activities = [];
+    });
+    await page.goto(W + "/reports", { waitUntil: "domcontentloaded" });
+    await ready(page);
+    const table = page.locator('[data-slot="data-table"] table');
+    const headers = (await table.locator("thead th").allTextContents()).map((value) => value.trim());
+    expect(row, "report-base-columns-match-other-work-tables", headers, (value) => value.join("|") === "Task|Ministry|Service|Due date|Group|Department|Status|Received date|Approved date|Rejected date|In progress date|Completed date");
+    expect(row, "request-task-join-produces-one-row", await table.locator("tbody tr").count(), (count) => count === 3);
+    const completed = table.getByRole("row").filter({ has: page.getByRole("button", { name: "Open Coverage complete lifecycle", exact: true }) });
+    for (const label of ["Received date", "Approved date", "In progress date", "Completed date"]) {
+      expect(row, "completed-row-records-" + label.replaceAll(" ", "-"), await completed.locator(`[data-label="${label}"] time`).getAttribute("datetime"), (value) => value === ({ "Received date": date(1), "Approved date": date(2), "In progress date": date(3), "Completed date": date(5) })[label]);
+    }
+    const backlog = table.getByRole("row").filter({ has: page.getByRole("button", { name: "Open Coverage backlog lifecycle", exact: true }) });
+    for (const label of ["Approved date", "Rejected date", "In progress date", "Completed date"]) {
+      expect(row, "backlog-missing-" + label.replaceAll(" ", "-"), (await backlog.locator(`[data-label="${label}"]`).innerText()).trim(), (value) => value === "");
+    }
+    await page.getByRole("heading", { name: "Decisions", exact: true }).waitFor();
+    await page.getByRole("heading", { name: "Time between stages", exact: true }).waitFor();
+    await page.getByRole("heading", { name: "Weekly request activity", exact: true }).waitFor();
+    const stages = page.getByRole("region", { name: "Time between stages", exact: true });
+    expect(row, "complete-pairs-only-contribute-to-stage-averages", await stages.locator("dl > div").allTextContents(), (items) => items.length === 3 && items[0].includes("Received") && items[0].includes("Approved") && items[0].includes("1.0 days") && items[1].includes("1.0 days") && items[2].includes("2.0 days") && items.every((text) => text.includes("1 record with both dates")));
+    expect(row, "decisions-compare-actual-decision-dates", await page.getByRole("img", { name: "1 approvals and 1 rejections", exact: true }).count(), (count) => count === 1);
+    expect(row, "weekly-received-total-uses-lifecycle-date", await page.locator('[aria-label$=", received: 3"]').count(), (count) => count === 1);
+    await noOverflow(row, page);
+    await shot(page, row, "report-complete-and-missing-milestones");
+    await completed.getByRole("button").click();
+    const detail = page.getByRole("dialog", { name: "Task details", exact: true });
+    await detail.waitFor();
+    expect(row, "report-row-opens-shared-floating-drawer", await detail.getAttribute("data-side"), (value) => value === "right");
+  });
+}
+
 async function denseContent() {
   await pageCase("data.dense-long-dashboard-reports", "dense", "narrow", async ({ row, fixture, page }) => {
     await fixture.context.route(API + "/api/workspace", async (route) => {
@@ -1162,15 +1352,19 @@ async function denseContent() {
       const data = await response.json();
       const base = data.tasks[0];
       if (!base) throw new Error("Seed task required for a realistic dense fixture");
+      const paletteDepartments = data.catalog.departments.filter((department) => department.groups?.length).slice(0, 4);
+      if (paletteDepartments.length < 4) throw new Error("Four grouped departments are required for palette coverage");
+      ["pink", "purple", "amber", "blue"].forEach((color, index) => { paletteDepartments[index].color = color; });
       const longTitle = "Very long ministry production task title used to verify wrapping and narrow screen access";
       data.tasks = Array.from({ length: 80 }, (_, i) => ({
         ...base,
         id: "coverage-dense-" + i,
         title: longTitle + " " + i,
+        department: paletteDepartments[i % paletteDepartments.length].id,
+        subTeam: paletteDepartments[i % paletteDepartments.length].groups[0],
         status: i % 4 === 0 ? "completed" : "in-progress",
-        progress: i % 4 === 0 ? 100 : 50,
         dueAt: new Date(Date.now() + i * 3600000).toISOString(),
-        completedAt: i % 4 === 0 ? new Date().toISOString() : undefined,
+        lifecycle: { receivedAt: base.createdAt, inProgressAt: base.createdAt, ...(i % 4 === 0 ? { completedAt: new Date().toISOString() } : {}) },
         privateNotes: [],
       }));
       data.requests = [];
@@ -1184,6 +1378,23 @@ async function denseContent() {
     await page.goto(W + "/reports", { waitUntil: "domcontentloaded" });
     await ready(page);
     await noOverflow(row, page);
+    const reportTable = page.locator('[data-slot="data-table"] table');
+    const reportHeaders = (await reportTable.locator("thead th").allTextContents()).map((value) => value.trim());
+    expect(row, "reports-render-each-field-as-a-separate-column", reportHeaders, (headers) => headers.join("|") === "Task|Ministry|Service|Due date|Group|Department|Status|Received date|Approved date|Rejected date|In progress date|Completed date");
+    const reportBadges = await reportTable.locator('[data-label="Department"] .badge, [data-label="Group"] .badge').evaluateAll((nodes) => {
+      const channels = (value) => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+      const luminance = (value) => {
+        const [r, g, b] = channels(value).map((channel) => channel / 255).map((channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      return nodes.map((node) => {
+        const style = getComputedStyle(node);
+        const fg = luminance(style.color);
+        const bg = luminance(style.backgroundColor);
+        return { background: style.backgroundColor, contrast: (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05) };
+      });
+    });
+    expect(row, "reports-badges-have-readable-foregrounds-across-palettes", reportBadges, (items) => new Set(items.map((item) => item.background)).size >= 4 && items.every((item) => item.contrast >= 4.5));
     await shot(page, row, "reports");
     expect(row, "dense-fixture-volume", await page.locator("body").innerText(), (x) => x.includes("Very long ministry"));
 
@@ -1204,8 +1415,7 @@ async function denseContent() {
         ministry: "Coverage ministry",
         dueAt: new Date(day.getTime() + i * 60000).toISOString(),
         status: i % 3 === 0 ? "completed" : i % 3 === 1 ? "in-progress" : "pending",
-        progress: i % 3 === 0 ? 100 : i % 3 === 1 ? 50 : 0,
-        completedAt: i % 3 === 0 ? new Date(day.getTime()).toISOString() : undefined,
+        lifecycle: { receivedAt: base.createdAt, ...(i % 3 !== 2 ? { inProgressAt: base.createdAt } : {}), ...(i % 3 === 0 ? { completedAt: new Date(day.getTime()).toISOString() } : {}) },
         privateNotes: [],
       }));
       data.requests = [];
@@ -1285,14 +1495,12 @@ async function keyboardAndErrors() {
 
     await trigger.click();
     await page.getByRole("dialog").waitFor();
-    await page.getByRole("button", { name: /^Comments/ }).click();
     const comment = page.locator('textarea[id^="comment-"]');
     await comment.waitFor();
-    await comment.fill("Draft survives switching detail tabs.");
-    await page.getByRole("button", { name: "Overview" }).click();
-    expect(row, "draft-kept-while-comments-hidden", await comment.inputValue(), (x) => x === "Draft survives switching detail tabs.");
-    await page.getByRole("button", { name: /^Comments/ }).click();
-    expect(row, "draft-restored-on-comments-tab", await comment.inputValue(), (x) => x === "Draft survives switching detail tabs.");
+    expect(row, "task-comments-follow-details-without-tabs", { tabs: await page.locator(".task-detail-tabs").count(), titleVisible: await page.locator(".task-details h2").isVisible(), commentVisible: await comment.isVisible() }, (value) => value.tabs === 0 && value.titleVisible && value.commentVisible);
+    await comment.fill("Task inline comment draft.");
+    await page.getByRole("button", { name: "Post comment", exact: true }).focus();
+    expect(row, "task-comment-draft-kept-inline", await comment.inputValue(), (x) => x === "Task inline comment draft.");
     await shot(page, row, "comment-draft-preserved");
   });
   await pageCase("keyboard.request-detail-trap-restore-and-comment-draft", "keyboard", "desktop", async ({ row, fixture, page }) => {
@@ -1303,7 +1511,7 @@ async function keyboardAndErrors() {
 
     await page.goto(W + "/requests", { waitUntil: "domcontentloaded" });
     await ready(page);
-    const trigger = page.locator(".request-row").filter({ hasText: "Coverage request comment draft" });
+    const trigger = requestTrigger(page, "Coverage request comment draft");
     await trigger.click();
     const dialog = page.getByRole("dialog");
     await dialog.waitFor();
@@ -1313,7 +1521,7 @@ async function keyboardAndErrors() {
     expect(row, "request-detail-focus-wraps-at-300ms", focus.after300ms, (x) => x.every(Boolean));
     await page.keyboard.press("Escape");
     await dialog.waitFor({ state: "detached" });
-    const restore = await settledFocusRestore(page, ".request-row");
+    const restore = await settledFocusRestore(page, trigger);
     expect(row, "request-detail-close-restores-trigger-at-60ms", restore.after60ms, Boolean);
     expect(row, "request-detail-close-restores-trigger-at-300ms", restore.after300ms, Boolean);
 
@@ -1338,7 +1546,7 @@ async function keyboardAndErrors() {
     const approvedStatus = requestStatus.getByRole("button", { name: /^Approved · \d+$/ });
     await approvedStatus.click();
     expect(row, "request-status-button-updates-filtered-list", { pressed: await approvedStatus.getAttribute("aria-pressed"), label: await page.locator(".request-list").getAttribute("aria-label") }, (value) => value.pressed === "true" && value.label === "approved requests");
-    const allStatuses = requestStatus.getByRole("button", { name: /^All · \d+$/ });
+    const allStatuses = requestStatus.getByRole("button", { name: /^All requests · \d+$/ });
     await allStatuses.click();
     expect(row, "request-status-all-button-resets-filter", { pressed: await allStatuses.getAttribute("aria-pressed"), label: await page.locator(".request-list").getAttribute("aria-label") }, (value) => value.pressed === "true" && value.label === "all requests");
 
@@ -1364,7 +1572,11 @@ async function main() {
   const sourceIdentity = JSON.parse(execFileSync(process.execPath, ["scripts/ui-review-hash.mjs"], { encoding: "utf8" }));
   result.candidate = { sourceSha256: sourceIdentity.sourceSha256, sourceFiles: sourceIdentity.sourceFiles };
   result.harness = { path: "scripts/check-ui-state-coverage.mjs", sha256: createHash("sha256").update(await readFile(new URL(import.meta.url))).digest("hex") };
-  browser = await chromium.launch();
+  browser = await chromium.launch(
+    process.env.PLAYWRIGHT_CHANNEL
+      ? { channel: process.env.PLAYWRIGHT_CHANNEL }
+      : {},
+  );
   try {
     await errors();
     await accessAndEmpty();
@@ -1373,6 +1585,7 @@ async function main() {
     await catalogRoutingJourney();
     await memberManagementJourney();
     await portalBranches();
+    await lifecycleCoverage();
     await denseContent();
     await keyboardAndErrors();
   } finally {

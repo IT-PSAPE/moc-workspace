@@ -1,4 +1,5 @@
 import { DEPARTMENT_COLORS } from "./types";
+import { defaultBannerQuotes, ensureDailyBannerQuote, validateBannerQuote } from "./banner-quotes";
 import type {
   Activity,
   Catalog,
@@ -371,6 +372,17 @@ export function validateWorkspaceAction(
     throw new Error("A workspace action is required.");
   const value = action as Record<string, unknown>;
   switch (value.type) {
+    case "save-banner-quote":
+      validateBannerQuote(value.quote);
+      return;
+    case "delete-banner-quotes":
+      validateSelectedIds(value.quoteIds, "quotes");
+      return;
+    case "set-banner-quote-today":
+      requireNonEmptyString(value.quoteId, "Quote ID");
+      return;
+    case "reset-banner-quote-today":
+      return;
     case "approve":
       requireNonEmptyString(value.requestId, "Request ID");
       return;
@@ -1197,10 +1209,44 @@ export function applyAction(
   state: WorkspaceState,
   user: Leader,
   action: WorkspaceAction,
+  now = new Date(),
 ): WorkspaceState {
   validateWorkspaceAction(action, state.catalog);
   user = requireApproved(state, user);
   switch (action.type) {
+    case "save-banner-quote": {
+      requireCell0(user, "manage banner quotes");
+      const settings = state.bannerQuotes ?? defaultBannerQuotes();
+      if (action.quote.id && !settings.quotes.some((quote) => quote.id === action.quote.id))
+        throw new Error("Quote was not found. Refresh and try again.");
+      const quote = { id: action.quote.id ?? makeId("quote"), text: action.quote.text.trim(), author: action.quote.author.trim() };
+      const quotes = action.quote.id
+        ? settings.quotes.map((item) => item.id === quote.id ? quote : item)
+        : [...settings.quotes, quote];
+      return { ...state, bannerQuotes: { ...settings, quotes } };
+    }
+    case "delete-banner-quotes": {
+      requireCell0(user, "manage banner quotes");
+      const settings = state.bannerQuotes ?? defaultBannerQuotes();
+      if (action.quoteIds.some((id) => !settings.quotes.some((quote) => quote.id === id)))
+        throw new Error("A selected quote was not found. Refresh and try again.");
+      return { ...state, bannerQuotes: { ...settings, quotes: settings.quotes.filter((quote) => !action.quoteIds.includes(quote.id)) } };
+    }
+    case "set-banner-quote-today": {
+      requireCell0(user, "manage banner quotes");
+      const prepared = ensureDailyBannerQuote(state, now);
+      const settings = prepared.bannerQuotes!;
+      const quote = settings.quotes.find((item) => item.id === action.quoteId);
+      if (!quote) throw new Error("Quote was not found. Refresh and try again.");
+      return { ...prepared, bannerQuotes: { ...settings, daily: { ...settings.daily!, override: { ...quote } } } };
+    }
+    case "reset-banner-quote-today": {
+      requireCell0(user, "manage banner quotes");
+      const prepared = ensureDailyBannerQuote(state, now);
+      const settings = prepared.bannerQuotes!;
+      const { override: _override, ...daily } = settings.daily!;
+      return { ...prepared, bannerQuotes: { ...settings, daily } };
+    }
     case "approve": {
       requireCell0(user, "approve requests");
       const request = state.requests.find(

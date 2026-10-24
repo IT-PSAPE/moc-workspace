@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./load-env";
 import { cors } from "hono/cors";
 import { Hono } from "hono";
 import type { Context, MiddlewareHandler } from "hono";
@@ -6,6 +6,7 @@ import { getConnInfo } from "@hono/node-server/conninfo";
 import { fileURLToPath } from "node:url";
 import {
   applyAction,
+  ensureDailyBannerQuote,
   createRequest,
   publicProjection,
   publicRequest,
@@ -19,6 +20,10 @@ import {
 } from "@moc/shared";
 import { createAuthRouter, getSession } from "./auth";
 import { JsonRepository, type Repository } from "./repository";
+import type { ReportStorage } from "./report-storage";
+import { HTTPException } from "hono/http-exception";
+import type { SealedLiveQuery } from "@neon/realtime/client";
+import type { WorkspaceRevision } from "./realtime";
 import {
   createTrackingCode,
   findRequestByTrackingCode,
@@ -43,7 +48,13 @@ const dataPath =
   process.env.API_LOCAL_DATA_PATH ??
   fileURLToPath(new URL("../data/state.json", import.meta.url));
 
-interface ApiOptions {
+export interface ApiOptions {
+  now?: () => Date;
+  quoteRandom?: () => number;
+  resolveSession?: (context: Context) => Promise<Session>;
+  reportStorage?: ReportStorage;
+  storage?: "local-demo" | "neon-postgres";
+  sealWorkspace?: (memberId: string) => Promise<SealedLiveQuery<WorkspaceRevision>>;
   /** Override only for an adapter that supplies a verified transport identity. */
   resolveRemoteAddress?: (context: Context) => string | undefined;
   maxCredentialBuckets?: number;
@@ -54,6 +65,9 @@ export function createApiApp(
   options: ApiOptions = {},
 ): Hono {
   const app = new Hono();
+  const resolveSession = options.resolveSession ?? (async (c: Context) => getSession(c));
+  const demoEnabled = () => !options.resolveSession && demoAvailable();
+  const now = options.now ?? (() => new Date());
 
   app.use(
     "*",
@@ -61,7 +75,7 @@ export function createApiApp(
       origin: (origin) => (origin && allowedOrigins.has(origin) ? origin : ""),
       credentials: true,
       allowMethods: ["GET", "POST", "PATCH", "OPTIONS"],
-      allowHeaders: ["Content-Type"],
+      allowHeaders: ["Content-Type", "Authorization"],
       maxAge: 600,
     }),
   );
@@ -124,6 +138,7 @@ export function createApiApp(
   });
 
   app.onError((error, c) => {
+    if (error instanceof HTTPException) return c.json({ error: error.message }, error.status);
     console.error(
       "API request failed:",
       error instanceof Error ? error.message : "Unknown error",
@@ -141,7 +156,7 @@ export function createApiApp(
 
   app.get("/health", (c) => c.json({ status: "ok" as const }));
   app.get("/api/session", async (c) => {
-    const session = getSession(c);
+    const session = await resolveSession(c);
     if (session.user) {
       const state = await repository.read();
       const currentUser = state.users.find(
@@ -150,10 +165,10 @@ export function createApiApp(
       return c.json(
         currentUser
           ? { ...session, user: currentUser }
-          : { user: null, demo: demoAvailable() },
+          : { user: null, demo: demoEnabled() },
       );
     }
-    return c.json({ ...session, demo: demoAvailable() });
+    return c.json({ ...session, demo: demoEnabled() });
   });
   app.route(
     "/api/auth",
@@ -161,7 +176,7 @@ export function createApiApp(
       findApprovedLeaderByGoogleEmail: (email) =>
         repository.findApprovedLeaderByGoogleEmail(email),
       getDemoLeaderByDepartment: (department) =>
-        repository.getDemoLeaderByDepartment(department),
+        options.resolveSession ? null : repository.getDemoLeaderByDepartment(department),
     }),
   );
 
@@ -176,7 +191,7 @@ export function createApiApp(
   });
 
   app.get("/api/integrations", async (c) => {
-    const session = getSession(c);
+    const session = await resolveSession(c);
     if (!isApproved(session)) return unauthorized(c);
     const state = await repository.read();
     const currentUser = state.users.find(
@@ -198,23 +213,56 @@ export function createApiApp(
       googleConfigured: Boolean(
         process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET,
       ),
-      storage: "local-demo" as const,
+      storage: options.storage ?? "local-demo",
+      ...(options.resolveSession ? { neonAuthConfigured: true } : {}),
+      ...(options.reportStorage ? { objectStorageConfigured: true } : {}),
     });
   });
 
-  app.get("/api/workspace", async (c) => {
-    const session = getSession(c);
+  app.post("/api/reports/export", async (c) => {
+    const session = await resolveSession(c);
     if (!isApproved(session)) return unauthorized(c);
     const state = await repository.read();
-    const user = state.users.find(
+    const actor = state.users.find((user) => user.id === session.user.id && user.approved);
+    if (!actor || !actor.isLeader || actor.department !== "cell-0")
+      return c.json({ error: "Only Cell 0 leaders can export reports." }, 403);
+    if (!options.reportStorage) return c.json({ error: "Report storage is not configured." }, 503);
+    const body = await c.req.json().catch(() => null);
+    if (!isRecord(body) || typeof body.month !== "string" || !/^\d{4}-(0[1-9]|1[0-2])$/.test(body.month) ||
+      typeof body.csv !== "string" || !body.csv.trim() || body.csv.length > 60_000)
+      return c.json({ error: "Choose a month and provide a report under 60 KB." }, 400);
+    return c.json(await options.reportStorage.save(actor.id, body.month, body.csv), 201);
+  });
+
+  app.post("/api/workspace/live", async (c) => {
+    const session = await resolveSession(c);
+    if (!isApproved(session)) return unauthorized(c);
+    const state = await repository.read();
+    if (!state.users.some((user) => user.id === session.user.id && user.approved)) return unauthorized(c);
+    if (!options.sealWorkspace) return c.json({ error: "Live updates are not configured." }, 503);
+    return c.json(await options.sealWorkspace(session.user.id));
+  });
+
+  app.get("/api/workspace", async (c) => {
+    const session = await resolveSession(c);
+    if (!isApproved(session)) return unauthorized(c);
+    let state = await repository.read();
+    let user = state.users.find(
       (leader) => leader.id === session.user.id && leader.approved,
     );
     if (!user) return unauthorized(c);
-    return c.json(projectWorkspace(state, user));
+    if (ensureDailyBannerQuote(state, now(), () => 0) !== state) {
+      state = await repository.update((current) => {
+        user = current.users.find((member) => member.id === session.user.id && member.approved);
+        if (!user) throw new HTTPException(401, { message: "Your member access has been revoked. Please sign in again." });
+        return ensureDailyBannerQuote(current, now(), options.quoteRandom);
+      });
+    }
+    return c.json(projectWorkspace(state, user!));
   });
 
   app.post("/api/actions", async (c) => {
-    const session = getSession(c);
+    const session = await resolveSession(c);
     if (!isApproved(session)) return unauthorized(c);
     const body: unknown = await c.req.json().catch(() => null);
     try {
@@ -243,7 +291,11 @@ export function createApiApp(
           throw new Error(
             "Your member access has been revoked. Please sign in again.",
           );
-        return applyAction(state, actor, body);
+        const timestamp = now();
+        return ensureDailyBannerQuote(
+          applyAction(ensureDailyBannerQuote(state, timestamp, options.quoteRandom), actor, body, timestamp),
+          timestamp, options.quoteRandom,
+        );
       });
     } catch (error) {
       if (
@@ -476,6 +528,7 @@ function projectWorkspace(
   );
   return {
     catalog: state.catalog,
+    bannerQuotes: state.bannerQuotes ? { quotes: [], daily: state.bannerQuotes.daily } : undefined,
     tasks: publicTasks.map((task) =>
       task.department === user.department || cell0RequestTaskIds.has(task.id)
         ? task

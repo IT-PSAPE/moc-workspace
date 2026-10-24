@@ -9,6 +9,9 @@
   },
   "dependencies": {
     "@moc/shared": "*",
+    "@neon/realtime": "^0.1.2",
+    "@neon/realtime-react": "^0.1.1",
+    "@neondatabase/auth": "^0.6.0-beta",
     "@tanstack/react-query": "^5.90.0",
     "react": "^19.2.0"
   },

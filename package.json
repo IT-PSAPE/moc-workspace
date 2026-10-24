@@ -13,7 +13,11 @@
     "test": "vitest run",
     "check:contrast": "node scripts/check-contrast.mjs",
     "shots": "node scripts/shoot.mjs",
-    "verify:ui": "node scripts/check-ui-flows.mjs"
+    "verify:ui": "node scripts/check-ui-flows.mjs",
+    "db:migrate": "tsx scripts/neon-db.ts",
+    "verify:neon": "tsx scripts/check-neon.ts",
+    "verify:quotes": "tsx scripts/check-banner-quotes.ts",
+    "deploy:neon": "neon deploy --update-existing --env .env.local"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
@@ -26,6 +30,20 @@
     "node": ">=22.12"
   },
   "overrides": {
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "zod": "^4.6.7",
+    "@neondatabase/auth": {
+      "zod": "^4.6.7"
+    },
+    "@neondatabase/auth-ui": {
+      "zod": "^4.6.7"
+    },
+    "@vercel/cli-config": {
+      "zod": "^4.6.7"
+    }
+  },
+  "dependencies": {
+    "@neon/config": "^1.9.3",
+    "@neon/env": "^1.6.4"
   }
 }

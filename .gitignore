@@ -16,3 +16,5 @@ output/playwright/
 
 output/reviews/
 reviews/round1/
+.neon
+.vercel

@@ -19,6 +19,9 @@ export async function startUiTestApi(origins) {
         NODE_ENV: "development",
         PORT: "0",
         DEMO_MODE: "true",
+        // Keep root Neon environment files from connecting test fixtures to production.
+        DATABASE_URL: "",
+        DATABASE_URL_UNPOOLED: "",
         API_LOCAL_DATA_PATH: path.join(directory, "state.json"),
         API_ALLOWED_ORIGINS: origins.join(","),
         TELEGRAM_BOT_TOKEN: "",

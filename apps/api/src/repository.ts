@@ -7,6 +7,7 @@ import {
   MINISTRIES,
   SERVICES,
   createSeedState,
+  parseBannerQuotes,
   type Catalog,
   type DepartmentDefinition,
   type Leader,
@@ -42,7 +43,7 @@ const initialState = (): WorkspaceState => {
   };
 };
 
-function parseState(source: string): WorkspaceState {
+export function parseState(source: string): WorkspaceState {
   const value: unknown = JSON.parse(source);
   if (typeof value !== "object" || value === null)
     throw new Error("Workspace state must be an object");
@@ -206,7 +207,7 @@ function parseState(source: string): WorkspaceState {
     )
       throw new Error("Workspace request service is missing from the catalog");
   }
-  return { ...candidate, catalog, tasks, requests, activities, notifications, users } as WorkspaceState;
+  return { ...candidate, catalog, tasks, requests, activities, notifications, users, bannerQuotes: parseBannerQuotes(candidate.bannerQuotes) } as WorkspaceState;
 }
 
 const lifecycleFields = [
@@ -221,7 +222,7 @@ function parseLifecycle(value: unknown, legacyCompletedAt?: unknown): LifecycleT
   if (value === undefined && legacyCompletedAt === undefined) return undefined;
   if (value !== undefined && !isRecord(value))
     throw new Error("Workspace lifecycle is malformed");
-  const lifecycle = { ...(value ?? {}) } as Record<string, unknown>;
+  const lifecycle: Record<string, unknown> = isRecord(value) ? { ...value } : {};
   if (legacyCompletedAt !== undefined) {
     if (!isIsoTimestamp(legacyCompletedAt))
       throw new Error("Workspace lifecycle completedAt is malformed");

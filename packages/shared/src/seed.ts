@@ -1,4 +1,5 @@
 import { DEPARTMENTS, MINISTRIES, SERVICES, getService } from "./catalog";
+import { defaultBannerQuotes } from "./banner-quotes";
 import type {
   Activity,
   Department,
@@ -310,6 +311,7 @@ export function createSeedState(): WorkspaceState {
         groups: [...department.groups],
       })),
     },
+    bannerQuotes: defaultBannerQuotes(),
     tasks,
     requests,
     users,

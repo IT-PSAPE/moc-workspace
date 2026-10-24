@@ -114,6 +114,22 @@ export interface WorkspaceState {
   users: Leader[];
   activities: Activity[];
   notifications: Notification[];
+  /** Optional for workspaces saved before configurable banner quotes. */
+  bannerQuotes?: BannerQuoteSettings;
+}
+export interface BannerQuote {
+  id: string;
+  text: string;
+  author: string;
+}
+export interface BannerQuoteSettings {
+  quotes: BannerQuote[];
+  /** Snapshots keep today's banner stable when the library is edited. */
+  daily?: {
+    date: string;
+    selected: BannerQuote | null;
+    override?: BannerQuote;
+  };
 }
 export interface Session {
   user: Leader | null;
@@ -154,6 +170,10 @@ export interface InternalTaskInput {
   service?: string;
 }
 export type WorkspaceAction =
+  | { type: "save-banner-quote"; quote: { id?: string; text: string; author: string } }
+  | { type: "delete-banner-quotes"; quoteIds: string[] }
+  | { type: "set-banner-quote-today"; quoteId: string }
+  | { type: "reset-banner-quote-today" }
   | { type: "approve"; requestId: string }
   | { type: "reject"; requestId: string; reason: string }
   | {

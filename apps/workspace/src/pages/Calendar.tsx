@@ -8,6 +8,7 @@ import { Button, Field, Modal } from "@moc/ui";
 import { type Task } from "@moc/shared";
 import { useWorkspace } from "@moc/client";
 import { FilterDrawer } from "../components/UiDialogs";
+import DetailsDrawer from "../components/DetailsDrawer";
 import TaskDetails from "../TaskDetails";
 import { layoutDeadlines } from "./schedule-layout";
 import "./workflows.css";
@@ -45,6 +46,8 @@ export default function CalendarPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [previewDate, setPreviewDate] = useState<Date | null>(null);
   const hours = useRef<HTMLDivElement>(null);
+  const previewTrigger = useRef<HTMLButtonElement | null>(null);
+  const taskReturnFocus = useRef<HTMLButtonElement | null>(null);
   const isCell0 = user?.department === "cell-0";
   const departments = state?.catalog?.departments ?? [];
   const departmentsById = useMemo(
@@ -150,8 +153,21 @@ export default function CalendarPage() {
     );
   }
   function openTask(task: Task) {
+    taskReturnFocus.current = previewDate ? previewTrigger.current : null;
     setPreviewDate(null);
     setSelectedId(task.id);
+  }
+  function closeTask() {
+    setSelectedId(null);
+    const trigger = taskReturnFocus.current;
+    taskReturnFocus.current = null;
+    if (trigger) {
+      // A preview's event button unmounts when its task opens. Return to the
+      // persistent calendar button that opened that preview instead.
+      window.requestAnimationFrame(() => {
+        if (trigger.isConnected) trigger.focus();
+      });
+    }
   }
   function renderTask(task: Task, row = false) {
     return (
@@ -159,7 +175,7 @@ export default function CalendarPage() {
         key={task.id}
         className={`calendar-task schedule-event ${row ? "schedule-event-row" : ""}`}
         data-dept={task.department}
-        data-dept-color={departmentsById.get(task.department)?.color}
+        data-department-color={departmentsById.get(task.department)?.color}
         onClick={() => openTask(task)}
         title={task.title}
         aria-label={`${task.title}, ${timeLabel(task.dueAt)}`}
@@ -317,7 +333,8 @@ export default function CalendarPage() {
                       className={`schedule-day-number ${dateKey(day) === dateKey(today) ? "is-today" : ""}`}
                       aria-haspopup="dialog"
                       aria-label={`${dateLabel(day)}, ${items.length} items`}
-                      onClick={() => {
+                      onClick={(event) => {
+                        previewTrigger.current = event.currentTarget;
                         setDate(day);
                         setPreviewDate(day);
                       }}
@@ -329,7 +346,10 @@ export default function CalendarPage() {
                       {items.length > 3 && (
                         <button
                           className="schedule-more"
-                          onClick={() => setPreviewDate(day)}
+                          onClick={(event) => {
+                            previewTrigger.current = event.currentTarget;
+                            setPreviewDate(day);
+                          }}
                         >
                           Show all {items.length} items
                         </button>
@@ -469,14 +489,13 @@ export default function CalendarPage() {
             ))}
         </div>
       </Modal>
-      <Modal
+      <DetailsDrawer
         open={Boolean(selected)}
-        onClose={() => setSelectedId(null)}
-        title="Deadline details"
-        className="task-detail-modal"
+        onClose={closeTask}
+        title="Task details"
       >
         {selected && <TaskDetails key={selected.id} task={selected} />}
-      </Modal>
+      </DetailsDrawer>
     </div>
   );
 }

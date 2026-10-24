@@ -209,30 +209,6 @@
   white-space: nowrap;
   cursor: pointer;
 }
-.schedule-event[data-dept-color="pink"] {
-  --schedule-event-bg: var(--brand-50);
-  --schedule-event-fg: var(--brand-700);
-}
-.schedule-event[data-dept-color="purple"] {
-  --schedule-event-bg: var(--dept-design-bg);
-  --schedule-event-fg: var(--dept-design-fg);
-}
-.schedule-event[data-dept-color="amber"] {
-  --schedule-event-bg: var(--dept-sound-bg);
-  --schedule-event-fg: var(--dept-sound-fg);
-}
-.schedule-event[data-dept-color="blue"] {
-  --schedule-event-bg: var(--dept-visual-bg);
-  --schedule-event-fg: var(--dept-visual-fg);
-}
-.schedule-event[data-dept-color="green"] {
-  --schedule-event-bg: var(--success-bg);
-  --schedule-event-fg: var(--success-text);
-}
-.schedule-event[data-dept-color="teal"] {
-  --schedule-event-bg: #e7f5f2;
-  --schedule-event-fg: #145f55;
-}
 .schedule-event-copy {
   display: flex;
   flex: 1;

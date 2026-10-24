@@ -22,6 +22,36 @@
   --department-fg: #115e59;
   --department-bg: #f0fdfa;
 }
+[data-department-color="red"] {
+  --department-fg: var(--palette-red-fg);
+  --department-bg: var(--palette-red-bg);
+}
+[data-department-color="orange"] {
+  --department-fg: var(--palette-orange-fg);
+  --department-bg: var(--palette-orange-bg);
+}
+[data-department-color="cyan"] {
+  --department-fg: var(--palette-cyan-fg);
+  --department-bg: var(--palette-cyan-bg);
+}
+[data-department-color="indigo"] {
+  --department-fg: var(--palette-indigo-fg);
+  --department-bg: var(--palette-indigo-bg);
+}
+[data-department-color="lime"] {
+  --department-fg: var(--palette-lime-fg);
+  --department-bg: var(--palette-lime-bg);
+}
+[data-department-color="slate"] {
+  --department-fg: var(--palette-slate-fg);
+  --department-bg: var(--palette-slate-bg);
+}
+[data-department-color] {
+  --dashboard-department-accent: var(--department-fg);
+  --dashboard-department-tint: var(--department-bg);
+  --schedule-event-fg: var(--department-fg);
+  --schedule-event-bg: var(--department-bg);
+}
 .department-dot[data-department-color],
 .team-dot[data-department-color] {
   background: var(--department-fg, var(--muted));

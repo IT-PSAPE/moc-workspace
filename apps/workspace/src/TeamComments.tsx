@@ -10,11 +10,13 @@ export default function TeamComments({
   target,
   audience,
   hidden = false,
+  readOnly = false,
 }: {
   notes: Task["privateNotes"];
   target: { kind: "task" | "request"; id: string };
   audience: string;
   hidden?: boolean;
+  readOnly?: boolean;
 }) {
   const { act } = useWorkspace();
   const [comment, setComment] = useState("");
@@ -23,7 +25,7 @@ export default function TeamComments({
   const [saved, setSaved] = useState(false);
   async function submitComment(event: React.FormEvent) {
     event.preventDefault();
-    if (!comment.trim() || busy) return;
+    if (readOnly || !comment.trim() || busy) return;
     setBusy(true);
     setError("");
     setSaved(false);
@@ -80,6 +82,7 @@ export default function TeamComments({
                   <time dateTime={note.createdAt}>
                     {new Intl.DateTimeFormat("en-ZA", {
                       dateStyle: "medium",
+                      timeZone: "Africa/Johannesburg",
                       timeStyle: "short",
                     }).format(new Date(note.createdAt))}
                   </time>
@@ -91,10 +94,10 @@ export default function TeamComments({
         </ol>
       ) : (
         <p className="task-comments-empty">
-          No comments yet. Share an update or ask a question.
+          {readOnly ? "No comments yet." : "No comments yet. Share an update or ask a question."}
         </p>
       )}
-      <form onSubmit={submitComment} className="task-comment-form">
+      {!readOnly && <form onSubmit={submitComment} className="task-comment-form">
         <label htmlFor={`comment-${target.id}`}>Add a comment</label>
         <textarea
           id={`comment-${target.id}`}
@@ -125,7 +128,7 @@ export default function TeamComments({
             {error}
           </p>
         )}
-      </form>
+      </form>}
     </section>
   );
 }

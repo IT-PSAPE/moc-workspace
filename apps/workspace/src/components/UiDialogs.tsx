@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { SlidersHorizontal } from "lucide-react";
 import { Button, Modal } from "@moc/ui";
 
@@ -85,6 +85,7 @@ type ConfirmDialogProps = {
   description: string;
   onConfirm: () => Promise<void>;
   confirmLabel?: string;
+  finalFocus?: ComponentProps<typeof Modal>["finalFocus"];
 };
 
 export function ConfirmDialog({
@@ -94,11 +95,13 @@ export function ConfirmDialog({
   description,
   onConfirm,
   confirmLabel = "Confirm",
+  finalFocus,
 }: ConfirmDialogProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const confirmInFlight = useRef(false);
   const errorRef = useRef<HTMLParagraphElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!error) return;
@@ -137,6 +140,8 @@ export function ConfirmDialog({
         }
       }}
       title={title}
+      initialFocus={cancelRef}
+      finalFocus={finalFocus}
     >
       <div className="flex flex-col gap-4">
         <p className="m-0 text-sm leading-6 text-[var(--ink-secondary)]">
@@ -156,7 +161,7 @@ export function ConfirmDialog({
           <button
             type="button"
             className="button button-secondary button-md"
-            autoFocus
+            ref={cancelRef}
             disabled={busy}
             onClick={() => {
               setError("");

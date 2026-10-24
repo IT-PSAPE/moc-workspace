@@ -8,19 +8,18 @@ import {
   CheckCheck,
   ClipboardList,
   LayoutDashboard,
-  LifeBuoy,
   LogOut,
   Settings,
   Bell,
   PanelLeft,
   PanelLeftClose,
   ArrowUpRight,
+  Building2,
   Users,
   ChevronRight,
 } from "lucide-react";
 import { useWorkspace } from "@moc/client";
 import { Button, Dropdown, Modal, Tooltip, TooltipProvider } from "@moc/ui";
-import { SidebarDepartmentNavMenu } from "./SidebarDepartmentNavMenu";
 import "./styles.css";
 import "./shell-overlays.css";
 import "./department-colors.css";
@@ -56,12 +55,16 @@ export default function Shell({ children }: { children: ReactNode }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [detailsCollapsed, setDetailsCollapsed] = useState(false);
-  const [guideOpen, setGuideOpen] = useState(false);
-  const { pathname } = useLocation();
+  const { pathname, hash } = useLocation();
   const departments = state.catalog.departments;
   const canSeeAll = user?.department === "cell-0" && user.isLeader;
+  const canAccessRequests = Boolean(
+    user?.approved && user.department === "cell-0",
+  );
+  const canManageSettings = Boolean(user?.approved && canSeeAll);
+  const canManagePublicRequest = Boolean(user?.approved && user.isLeader);
   const inboxCount =
-    state?.requests.filter((request) => request.status === "pending").length ??
+    state?.requests.filter((request) => request.status === "backlog").length ??
     0;
   const visibleNotifications = useMemo(
     () =>
@@ -73,13 +76,34 @@ export default function Shell({ children }: { children: ReactNode }) {
   const unread = visibleNotifications.filter((item) => !item.read).length;
   const navigation = mainNav.filter(
     (item) =>
-      !item.cell0 || canSeeAll || (item.href === "/requests" && user?.isLeader),
+      !item.cell0 || (item.href === "/requests" ? canAccessRequests : canSeeAll),
   );
   const active = (href: string) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href);
   const sectionTitle =
     navigation.find((item) => active(item.href))?.label ?? "Settings";
-  const hasSecondary = pathname.startsWith("/departments");
+  const isSettings = pathname.startsWith("/settings");
+  const hasSecondary = pathname.startsWith("/departments") || isSettings;
+  const secondaryName = isSettings ? "settings" : "department";
+  const settingsSection = canManagePublicRequest && hash === "public-request"
+    ? "public-request"
+    : canManageSettings && hash === "departments"
+      ? "departments"
+      : "members";
+  const settingsItems = [
+    ...(canManageSettings
+      ? [
+        { label: "Members", section: "members", hash: "", icon: Users },
+        {
+          label: "Departments",
+          section: "departments",
+          hash: "departments",
+          icon: Building2,
+        },
+      ]
+      : [{ label: "Your account", section: "members", hash: "", icon: Users }]),
+    ...(canManagePublicRequest ? [{ label: "Public request", section: "public-request", hash: "public-request", icon: ClipboardList }] : []),
+  ];
   function signOut() {
     void logout().catch((error: unknown) =>
       setActionError(
@@ -106,7 +130,7 @@ export default function Shell({ children }: { children: ReactNode }) {
                 aria-label={label}
                 aria-description={
                   href === "/requests" && inboxCount > 0
-                    ? `${inboxCount} pending requests`
+                    ? `${inboxCount} backlog requests`
                     : undefined
                 }
                 aria-current={active(href) ? "page" : undefined}
@@ -128,16 +152,6 @@ export default function Shell({ children }: { children: ReactNode }) {
               >
                 <Bell size={19} aria-hidden="true" />
                 {unread > 0 && <i />}
-              </button>
-            </Tooltip>
-            <Tooltip label="Quick guide">
-              <button
-                type="button"
-                className="rail-item"
-                aria-label="Quick guide"
-                onClick={() => setGuideOpen(true)}
-              >
-                <LifeBuoy size={19} aria-hidden="true" />
               </button>
             </Tooltip>
             <Dropdown.Root>
@@ -190,39 +204,57 @@ export default function Shell({ children }: { children: ReactNode }) {
         </nav>
         <div className="workspace-surface">
           {hasSecondary && !detailsCollapsed && (
-            <aside className="sidebar" aria-label="Department navigation">
+            <aside
+              className="sidebar"
+              aria-label={isSettings ? "Settings navigation" : "Department navigation"}
+            >
               <div className="sidebar-header">
                 <span className="workspace-avatar">M</span>
                 <strong>MOC Workspace</strong>
                 <button
                   className="icon-button"
                   type="button"
-                  aria-label="Collapse department navigation"
+                  aria-label={`Collapse ${secondaryName} navigation`}
                   onClick={() => setDetailsCollapsed(true)}
                 >
                   <PanelLeftClose size={16} />
                 </button>
               </div>
-              <nav className="side-nav" aria-label="Departments">
-                <span className="nav-group-label">Departments</span>
-                <Link
-                  className={`nav-item ${pathname === "/departments" ? "active" : ""}`}
-                  to="/departments"
-                  activeOptions={{ exact: true }}
-                >
-                  <Users size={17} />
-                  All departments
-                </Link>
-                {departments
-                  .filter(
-                    (department) => department.id !== "cell-0" || canSeeAll,
-                  )
-                  .map((department) => (
-                    <SidebarDepartmentNavMenu
-                      key={department.id}
-                      department={department}
+              {isSettings ? (
+                <nav className="side-nav" aria-label="Settings">
+                  <span className="nav-group-label">Settings</span>
+                  {settingsItems.map(({ label, section, hash: sectionHash, icon: Icon }) => (
+                    <Link
+                      key={section}
+                      className={`nav-item ${settingsSection === section ? "active" : ""}`}
+                      to="/settings"
+                      hash={sectionHash}
+                      activeOptions={{ exact: true, includeHash: true }}
+                      aria-current={settingsSection === section ? "page" : undefined}
                     >
+                      <Icon size={17} aria-hidden="true" />
+                      {label}
+                    </Link>
+                  ))}
+                </nav>
+              ) : (
+                <nav className="side-nav" aria-label="Departments">
+                  <span className="nav-group-label">Departments</span>
+                  <Link
+                    className={`nav-item ${pathname === "/departments" ? "active" : ""}`}
+                    to="/departments"
+                    activeOptions={{ exact: true }}
+                  >
+                    <Users size={17} />
+                    All departments
+                  </Link>
+                  {departments
+                    .filter(
+                      (department) => department.id !== "cell-0" || canSeeAll,
+                    )
+                    .map((department) => (
                       <Link
+                        key={department.id}
                         className={`nav-item ${pathname === `/departments/${department.id}` ? "active" : ""}`}
                         to={`/departments/${department.id}`}
                       >
@@ -234,9 +266,9 @@ export default function Shell({ children }: { children: ReactNode }) {
                         {department.name}
                         {department.id === "cell-0" && <small>Private</small>}
                       </Link>
-                    </SidebarDepartmentNavMenu>
-                  ))}
-              </nav>
+                    ))}
+                </nav>
+              )}
             </aside>
           )}
           <main className="main-panel">
@@ -255,7 +287,7 @@ export default function Shell({ children }: { children: ReactNode }) {
                 <button
                   className="icon-button expand-navigation-trigger"
                   type="button"
-                  aria-label="Expand department navigation"
+                  aria-label={`Expand ${secondaryName} navigation`}
                   onClick={() => setDetailsCollapsed(false)}
                 >
                   <PanelLeft size={18} />
@@ -326,7 +358,7 @@ export default function Shell({ children }: { children: ReactNode }) {
                 {href === "/requests" && inboxCount > 0 && (
                   <i
                     className="nav-unread-dot"
-                    aria-label={`${inboxCount} pending requests`}
+                    aria-label={`${inboxCount} backlog requests`}
                   />
                 )}
               </Link>
@@ -336,25 +368,41 @@ export default function Shell({ children }: { children: ReactNode }) {
               {departments
                 .filter((department) => department.id !== "cell-0" || canSeeAll)
                 .map((department) => (
-                  <SidebarDepartmentNavMenu
+                  <Link
                     key={department.id}
-                    department={department}
+                    className={`nav-item ${pathname === `/departments/${department.id}` ? "active" : ""}`}
+                    to={`/departments/${department.id}`}
+                    onClick={closeNavigation}
                   >
-                    <Link
-                      className="nav-item"
-                      to={`/departments/${department.id}`}
-                      onClick={closeNavigation}
-                    >
-                      <span
-                        className="department-dot"
-                        data-dept={department.id}
-                        data-department-color={department.color}
-                      />
-                      {department.name}
-                    </Link>
-                  </SidebarDepartmentNavMenu>
+                    <span
+                      className="department-dot"
+                      data-dept={department.id}
+                      data-department-color={department.color}
+                    />
+                    {department.name}
+                    {department.id === "cell-0" && <small>Private</small>}
+                  </Link>
                 ))}
             </div>
+            {isSettings && (
+              <nav className="mobile-settings" aria-label="Settings">
+                <span className="nav-group-label">Settings</span>
+                {settingsItems.map(({ label, section, hash: sectionHash, icon: Icon }) => (
+                  <Link
+                    key={section}
+                    to="/settings"
+                    hash={sectionHash}
+                    activeOptions={{ exact: true, includeHash: true }}
+                    className={`nav-item ${settingsSection === section ? "active" : ""}`}
+                    aria-current={settingsSection === section ? "page" : undefined}
+                    onClick={closeNavigation}
+                  >
+                    <Icon size={19} aria-hidden="true" />
+                    {label}
+                  </Link>
+                ))}
+              </nav>
+            )}
             <a
               href={import.meta.env.VITE_PORTAL_URL || "http://localhost:5174"}
               className="nav-item"
@@ -362,17 +410,6 @@ export default function Shell({ children }: { children: ReactNode }) {
               <ArrowUpRight size={19} />
               Request portal
             </a>
-            <button
-              type="button"
-              className="nav-item"
-              onClick={() => {
-                closeNavigation();
-                setGuideOpen(true);
-              }}
-            >
-              <LifeBuoy size={19} />
-              Quick guide
-            </button>
             <button type="button" className="nav-item" onClick={signOut}>
               <LogOut size={19} />
               Sign out
@@ -386,8 +423,8 @@ export default function Shell({ children }: { children: ReactNode }) {
           className="notifications-modal"
         >
           <div
-            className="flex max-h-[min(50dvh,420px)] flex-col overflow-y-auto"
-            role="list"
+            className="flex min-h-0 max-h-[min(50dvh,420px)] flex-1 flex-col overflow-y-auto overscroll-contain"
+            role={visibleNotifications.length ? "list" : undefined}
             aria-label="Notifications"
           >
             {visibleNotifications.length ? (
@@ -396,17 +433,17 @@ export default function Shell({ children }: { children: ReactNode }) {
                 .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
                 .map((item) => (
                   <div
-                    className={`flex items-start gap-2.5 border-b border-[var(--line)] px-4 py-3 ${item.read ? "" : "bg-[var(--surface-sunken)]"}`}
+                    className="flex shrink-0 items-start gap-3 border-b border-[var(--line-subtle)] px-5 py-3 last:border-b-0"
                     key={item.id}
                     role="listitem"
                   >
                     <span
-                      className={`mt-1.5 size-[7px] shrink-0 rounded-full ${item.read ? "bg-transparent" : "bg-[var(--brand-500)]"}`}
+                      className={`mt-[7px] size-1.5 shrink-0 rounded-full ${item.read ? "bg-transparent" : "bg-[var(--brand-500)]"}`}
                       aria-hidden="true"
                     />
-                    <div className="min-w-0">
-                      <p className="m-0 break-words text-sm leading-5">{item.text}</p>
-                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs leading-4 text-[var(--muted)]">
+                    <div className="min-w-0 flex-1">
+                      <p className={`m-0 break-words text-sm leading-5 ${item.read ? "font-normal" : "font-medium"}`}>{item.text}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs leading-4 text-[var(--muted)]">
                         <span
                           className={`font-semibold ${item.read ? "" : "text-[var(--brand-700)]"}`}
                         >
@@ -422,7 +459,7 @@ export default function Shell({ children }: { children: ReactNode }) {
                   </div>
                 ))
             ) : (
-              <div className="flex flex-col items-center gap-1.5 py-4 text-center text-sm leading-5 text-[var(--muted)]">
+              <div className="flex flex-col items-center gap-2 px-5 py-10 text-center text-sm leading-5 text-[var(--muted)]">
                 <CheckCheck size={20} className="text-[var(--success-solid)]" aria-hidden="true" />
                 <p className="m-0">You’re all caught up.</p>
               </div>
@@ -431,7 +468,7 @@ export default function Shell({ children }: { children: ReactNode }) {
           {notificationError && (
             <div
               role="alert"
-              className="mt-2.5 flex items-center gap-3 rounded-lg border border-[var(--danger-border)] bg-[var(--danger-bg)] p-3 text-sm leading-5 text-[var(--danger-text)]"
+              className="mx-5 my-3 flex shrink-0 items-center gap-3 rounded-lg border border-[var(--danger-border)] bg-[var(--danger-bg)] p-3 text-sm leading-5 text-[var(--danger-text)]"
             >
               <div className="flex min-w-0 items-center gap-2">
                 <AlertTriangle size={18} className="shrink-0" aria-hidden="true" />
@@ -439,7 +476,7 @@ export default function Shell({ children }: { children: ReactNode }) {
               </div>
             </div>
           )}
-          <div className="mt-3 flex flex-none items-center justify-end gap-2 border-t border-[var(--line)] pt-3">
+          <div className="flex flex-none items-center justify-end gap-2 border-t border-[var(--line)] px-5 py-3">
             <Button variant="ghost" onClick={() => setNotificationsOpen(false)}>
               Close
             </Button>
@@ -465,44 +502,6 @@ export default function Shell({ children }: { children: ReactNode }) {
                 <Check size={15} /> Mark all as read
               </Button>
             )}
-          </div>
-        </Modal>
-        <Modal
-          open={guideOpen}
-          onClose={() => setGuideOpen(false)}
-          title="A quick guide to MOC"
-          className="quick-guide-modal"
-        >
-          <div className="flex flex-col gap-4">
-            <p className="m-0 text-sm leading-5 text-[var(--muted)]">
-              Use your workspace to keep creative ministry work visible,
-              organized, and moving.
-            </p>
-            <ol className="m-0 flex list-decimal flex-col gap-3.5 pl-5">
-              <li className="pl-1">
-                <strong className="block text-sm font-semibold leading-5">Review requests</strong>
-                <span className="mt-0.5 block text-[13px] leading-[18px] text-[var(--muted)]">
-                  Cell 0 checks new requests and routes approved work to a
-                  department.
-                </span>
-              </li>
-              <li className="pl-1">
-                <strong className="block text-sm font-semibold leading-5">Follow team progress</strong>
-                <span className="mt-0.5 block text-[13px] leading-[18px] text-[var(--muted)]">
-                  Departments update task progress as work moves through
-                  production.
-                </span>
-              </li>
-              <li className="pl-1">
-                <strong className="block text-sm font-semibold leading-5">Keep an eye on deadlines</strong>
-                <span className="mt-0.5 block text-[13px] leading-[18px] text-[var(--muted)]">
-                  The calendar and dashboard highlight what is coming up next.
-                </span>
-              </li>
-            </ol>
-            <Button className="self-start" variant="primary" onClick={() => setGuideOpen(false)}>
-              Got it
-            </Button>
           </div>
         </Modal>
       </div>

@@ -12,9 +12,9 @@ import {
 } from "lucide-react";
 import { Button, Field, Modal } from "@moc/ui";
 import { FilterDrawer } from "../components/UiDialogs";
+import DetailsDrawer from "../components/DetailsDrawer";
 import {
   type Department as DepartmentId,
-  type Progress,
   type SubTeam,
   type Task,
   type TaskStatus,
@@ -32,7 +32,6 @@ const columns: {
   { id: "in-progress", label: "In progress", tone: "green" },
   { id: "completed", label: "Completed", tone: "neutral" },
 ];
-const progressSteps: Progress[] = [0, 25, 50, 75, 100];
 const dateLabel = (value: string) =>
   new Intl.DateTimeFormat("en-ZA", {
     day: "numeric",
@@ -135,18 +134,8 @@ export default function DepartmentPage({
   };
   const updateTask = (
     task: Task,
-    change: { progress?: Progress; status?: TaskStatus },
+    change: { status: TaskStatus },
   ) => run(() => act({ type: "update-task", taskId: task.id, ...change }));
-  const progressForDrop = (task: Task, status: TaskStatus): Progress =>
-    status === "completed"
-      ? 100
-      : status === "pending"
-        ? 0
-        : task.progress === 0
-          ? 25
-          : task.progress === 100
-            ? 75
-            : task.progress;
   const matchesDropFilters = (task: Task) =>
     (task.title + " " + task.ministry)
       .toLowerCase()
@@ -179,10 +168,7 @@ export default function DepartmentPage({
     setDraggingTaskId(null);
     setDropTargetStatus(null);
     if (task && canEdit && task.status !== status) {
-      void updateTask(task, {
-        status,
-        progress: progressForDrop(task, status),
-      });
+      void updateTask(task, { status });
     }
   };
   const resetDrag = () => {
@@ -354,9 +340,7 @@ export default function DepartmentPage({
           const dropDescription =
             statusFilter !== "all" && statusFilter !== column.id
               ? `Move to ${column.label}; it will leave this status filter.`
-              : `Move to ${column.label} at ${
-                  movingTask ? progressForDrop(movingTask, column.id) : 0
-                }% progress.`;
+              : `Move to ${column.label}.`;
           return (
             <section
               className={
@@ -372,7 +356,6 @@ export default function DepartmentPage({
                 <div>
                   <span className={"status-dot status-" + column.id} />
                   <h2>{column.label}</h2>
-                  <span className="column-count">{items.length}</span>
                 </div>
                 {column.id === "pending" && isCell0 && (
                   <button
@@ -440,15 +423,6 @@ export default function DepartmentPage({
                           )}
                           <span>{task.ministry || "Cell 0"}</span>
                         </div>
-                        <div className="task-progress-row">
-                          <div
-                            className="progress-track"
-                            data-complete={task.status === "completed"}
-                          >
-                            <span style={{ width: task.progress + "%" }} />
-                          </div>
-                          <span>{task.progress}%</span>
-                        </div>
                         <div className="task-card-footer">
                           <span
                             className={
@@ -490,54 +464,24 @@ export default function DepartmentPage({
         })}
       </section>
 
-      <Modal
+      <DetailsDrawer
         open={Boolean(selectedId)}
         onClose={() => setSelectedId(null)}
         title="Task details"
-        className="task-detail-modal"
       >
         {selected && (
           <div className="workflow-detail">
             <TaskDetails key={selected.id} task={selected}>
-              {canEdit && (
+              {canEdit ? (
                 <div className="detail-edit">
                   <div className="detail-section-heading">
-                    <div>
-                      <h3>Progress</h3>
-                      <p>Choose the current completion level.</p>
-                    </div>
-                    <strong>{selected.progress}%</strong>
-                  </div>
-                  <div
-                    className="progress-buttons"
-                    aria-label="Update progress"
-                  >
-                    {progressSteps.map((step) => (
-                      <button
-                        key={step}
-                        className={
-                          selected.progress === step
-                            ? "progress-choice active"
-                            : "progress-choice"
-                        }
-                        disabled={busy}
-                        onClick={() =>
-                          void updateTask(selected, { progress: step })
-                        }
-                      >
-                        {selected.progress === step && <Check size={14} />}
-                        {step}%
-                      </button>
-                    ))}
+                    <h3>Status</h3>
                   </div>
                   <div className="detail-actions">
                     <Button
                       disabled={busy || selected.status === "pending"}
                       onClick={() =>
-                        void updateTask(selected, {
-                          status: "pending",
-                          progress: 0,
-                        })
+                        void updateTask(selected, { status: "pending" })
                       }
                     >
                       Move to pending
@@ -554,16 +498,15 @@ export default function DepartmentPage({
                       variant="primary"
                       disabled={busy || selected.status === "completed"}
                       onClick={() =>
-                        void updateTask(selected, {
-                          status: "completed",
-                          progress: 100,
-                        })
+                        void updateTask(selected, { status: "completed" })
                       }
                     >
                       <Check size={15} /> Complete
                     </Button>
                   </div>
                 </div>
+              ) : (
+                <></>
               )}
             </TaskDetails>
             {(feedback || error) && (
@@ -578,7 +521,7 @@ export default function DepartmentPage({
             )}
           </div>
         )}
-      </Modal>
+      </DetailsDrawer>
       <Modal
         open={createOpen}
         onClose={() => setCreateOpen(false)}

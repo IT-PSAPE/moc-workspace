@@ -1,11 +1,14 @@
-/* The shared Modal wrapper gives content a flex fill; these shell dialogs size
-   to their utility-composed content while retaining its focus behavior. */
-.notifications-modal,
-.quick-guide-modal {
+/* The shared Modal wrapper gives content a flex fill; notifications size to
+   their content while retaining its focus behavior. */
+.notifications-modal {
   --modal-width: 448px;
 }
 
-.notifications-modal .modal-content,
-.quick-guide-modal .modal-content {
+/* The list owns scrolling; header, rows and footer share one padding rhythm. */
+.notifications-modal .modal-content {
   flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
 }

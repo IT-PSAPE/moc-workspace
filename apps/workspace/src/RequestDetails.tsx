@@ -13,11 +13,13 @@ export default function RequestDetails({
   request: MinistryRequest;
   children?: ReactNode;
 }) {
-  const { state } = useWorkspace();
+  const { state, user } = useWorkspace();
   const service = state?.catalog?.services.find(
     (item) => item.id === request.service,
   );
-  const task = state?.tasks.find((item) => item.id === request.taskId);
+  const task = state?.tasks.find((item) => request.taskId
+    ? item.id === request.taskId
+    : item.requestId === request.id);
   const routeDepartmentId =
     request.status === "approved" ? task?.department : service?.department;
   const routeGroup =
@@ -26,13 +28,24 @@ export default function RequestDetails({
     (item) => item.id === routeDepartmentId,
   );
   const notes = task?.privateNotes ?? request.privateNotes ?? [];
+  const lifecycle = { ...request.lifecycle, ...task?.lifecycle };
+  const milestones = [
+    { label: "Received", value: lifecycle.receivedAt },
+    { label: "Approved", value: lifecycle.approvedAt },
+    { label: "Rejected", value: lifecycle.rejectedAt },
+    { label: "In progress", value: lifecycle.inProgressAt },
+    { label: "Completed", value: lifecycle.completedAt },
+  ].filter(
+    (milestone): milestone is { label: string; value: string } =>
+      Boolean(milestone.value),
+  );
   return (
     <div className="task-details request-details">
       <header className="task-details-title">
         <span>
-          {request.reference} · Submitted{" "}
-          {new Intl.DateTimeFormat("en-ZA", { dateStyle: "medium" }).format(
-            new Date(request.createdAt),
+          {request.reference} · Received{" "}
+          {new Intl.DateTimeFormat("en-ZA", { dateStyle: "medium", timeZone: "Africa/Johannesburg" }).format(
+            new Date(lifecycle.receivedAt ?? request.createdAt),
           )}
         </span>
         <h2>{request.title}</h2>
@@ -45,12 +58,12 @@ export default function RequestDetails({
                 : "gold"
           }
         >
-          {request.status}
+          {request.status[0].toUpperCase() + request.status.slice(1)}
         </Badge>
       </header>
       <section className="task-details-section">
         <h3>Delivery & routing</h3>
-        {request.status === "pending" &&
+        {request.status === "backlog" &&
           Date.parse(request.dueAt) >= Date.now() &&
           Date.parse(request.dueAt) - Date.now() < 86400000 && (
             <div className="short-notice-banner mb-2 gap-2 !p-3">
@@ -66,23 +79,28 @@ export default function RequestDetails({
           )}
         <dl className="request-property-list">
           <div>
-            <dt>Requested delivery</dt>
-            <dd>
-              <time dateTime={request.dueAt}>
-                {new Intl.DateTimeFormat("en-ZA", {
-                  dateStyle: "long",
-                  timeStyle: "short",
-                }).format(new Date(request.dueAt))}
-              </time>
-            </dd>
-          </div>
-          <div>
             <dt>Ministry</dt>
             <dd>{request.ministry}</dd>
           </div>
           <div>
             <dt>Service</dt>
             <dd>{service?.name ?? "Service unavailable"}</dd>
+          </div>
+          <div>
+            <dt>Due date</dt>
+            <dd>
+              <time dateTime={request.dueAt}>
+                {new Intl.DateTimeFormat("en-ZA", {
+                  dateStyle: "long",
+                  timeZone: "Africa/Johannesburg",
+                  timeStyle: "short",
+                }).format(new Date(request.dueAt))}
+              </time>
+            </dd>
+          </div>
+          <div>
+            <dt>Group</dt>
+            <dd>{routeGroup?.trim() || "Not assigned"}</dd>
           </div>
           <div>
             <dt>Department</dt>
@@ -94,10 +112,6 @@ export default function RequestDetails({
                     ? "Department unavailable"
                     : "Not assigned")}
             </dd>
-          </div>
-          <div>
-            <dt>Group</dt>
-            <dd>{routeGroup?.trim() || "Not assigned"}</dd>
           </div>
         </dl>
       </section>
@@ -133,16 +147,38 @@ export default function RequestDetails({
           )}
           {request.rejectionReason && (
             <div>
-              <dt>Reason returned to ministry</dt>
+              <dt>Rejection reason</dt>
               <dd className="task-brief-value">{request.rejectionReason}</dd>
             </div>
           )}
         </dl>
       </section>
+      {milestones.length > 0 && (
+        <section className="task-details-section">
+          <h3>Lifecycle</h3>
+          <dl className="request-property-list">
+            {milestones.map(({ label, value }) => (
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd>
+                  <time dateTime={value}>
+                    {new Intl.DateTimeFormat("en-ZA", {
+                      dateStyle: "medium",
+                      timeZone: "Africa/Johannesburg",
+                      timeStyle: "short",
+                    }).format(new Date(value))}
+                  </time>
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      )}
       {children && (
         <section className="task-details-section">{children}</section>
       )}
       <TeamComments
+        readOnly={!(user?.approved && user.isLeader && user.department === "cell-0")}
         notes={notes}
         target={{
           kind: task ? "task" : "request",

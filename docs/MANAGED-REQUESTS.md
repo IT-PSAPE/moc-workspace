@@ -83,7 +83,11 @@ source of Duty options. Do not add a separate duty catalog.
 ## Permissions and reference safety
 
 Approved members can authenticate and retain their existing own-department task
-edit/comment permissions. Any current persisted leader can manage ministries and
+edit/comment permissions. The member table labels approval as “Sign-in enabled”;
+this controls admission to the workspace separately from the Leader role.
+Approved leaders can create internal tasks in their own department, while Cell 0
+leaders can create them in any department. The board button and API share this
+rule; ordinary members cannot create tasks. Any current persisted leader can manage ministries and
 services. Only current Cell 0 leaders can manage members/departments or review
 requests. Resolve authorization against persisted membership in each mutation
 transaction; old session roles never confer current management access. The full

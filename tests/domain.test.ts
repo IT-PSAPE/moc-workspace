@@ -1148,6 +1148,26 @@ describe("shared domain model", () => {
     ).toHaveLength(priorStatusActivities);
   });
 
+  it("lets a newly invited leader create tasks in a custom department using their current role", () => {
+    let state = createSeedState();
+    const admin = state.users.find((user) => user.department === "cell-0")!;
+    state = applyAction(state, admin, {
+      type: "save-department", department: { id: "hospitality", name: "Hospitality", groups: ["Welcome"], color: "blue" },
+    });
+    state = applyAction(state, admin, {
+      type: "invite-member", input: { name: "Invited leader", email: "welcome@example.org", duty: "Team leader", department: "hospitality", groups: ["Welcome"], isLeader: true },
+    });
+    const leader = state.users.find((user) => user.email === "welcome@example.org")!;
+    const action: WorkspaceAction = { type: "create-task", input: {
+      title: "Prepare welcome packs", department: "hospitality", subTeam: "Welcome",
+      dueAt: new Date(Date.now() + 86400000).toISOString(), instructions: "Prepare packs for visitors.", notes: "Coordinate with the team.",
+    } };
+    state = applyAction(state, leader, action);
+    expect(state.tasks.at(-1)).toMatchObject({ title: "Prepare welcome packs", department: "hospitality", subTeam: "Welcome" });
+    state = applyAction(state, admin, { type: "update-member", userId: leader.id, changes: { isLeader: false } });
+    expect(() => applyAction(state, leader, action)).toThrow(/approved leader/i);
+  });
+
   it("allows Cell 0 to create private internal work", () => {
     const state = createSeedState();
     const cell0 = state.users.find((user) => user.department === "cell-0")!;

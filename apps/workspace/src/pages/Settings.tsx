@@ -144,12 +144,12 @@ const memberColumns: DataTableColumnDef<MemberRow>[] = [
     },
   },
   {
-    id: "access", header: "Access",
-    meta: { label: "Access", headerClassName: "w-[90px]" },
+    id: "access", header: "Sign-in enabled",
+    meta: { label: "Sign-in enabled", headerClassName: "w-[130px]" },
     cell: ({ row }) => {
       const { member, busyKey, currentUserId, onChangeAccess } = row.original;
       return <Switch checked={member.approved} disabled={Boolean(busyKey) || member.id === currentUserId}
-        name={`${member.name} workspace access`} compact onChange={(checked) => onChangeAccess(member, checked)} />;
+        name={`${member.name} sign-in enabled`} compact onChange={(checked) => onChangeAccess(member, checked)} />;
     },
   },
 ];
@@ -464,6 +464,12 @@ export default function SettingsPage() {
               </Button>
             </div>
 
+            <p className="m-0 text-sm leading-5 text-[var(--muted)]">
+              Sign-in enabled lets a member enter the workspace. Leaders can also
+              create internal tasks in their department and manage request options.
+              Cell 0 leaders can create tasks across departments.
+            </p>
+
             {inviteLink && (
               <aside className="members-invite-ready" aria-live="polite">
                 <div className="members-invite-ready-copy">
@@ -576,7 +582,7 @@ export default function SettingsPage() {
                   onChange={(checked) =>
                     setInviteForm({ ...inviteForm, isLeader: checked })
                   }
-                  help="Leaders can manage request options. Workspace access is controlled separately."
+                  help="Leaders can create internal tasks in their department and manage request options."
                 />
                 {feedback && <div ref={inviteFeedbackRef} tabIndex={-1} className="workflow-alert members-feedback" role="alert">
                   <span>{feedback}</span>
@@ -678,7 +684,7 @@ export default function SettingsPage() {
               </div>
             </div>
             <Badge tone={user.approved ? "green" : "gold"}>
-              {user.approved ? "Approved access" : "Access paused"}
+              {user.approved ? "Sign-in enabled" : "Sign-in disabled"}
             </Badge>
           </div>
           <dl className="members-account-details">

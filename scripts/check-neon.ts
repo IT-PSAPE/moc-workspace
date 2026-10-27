@@ -192,6 +192,29 @@ try {
   const tracking = await fetch(`${root}/api/track`, { method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify({ code: receipt.trackingCode }) });
   assert.equal(tracking.status, 200);
   assert.equal((await tracking.json()).task.status, "completed");
+  const internalDepartment = liveState.catalog.departments.find((department) => department.id !== "cell-0")!;
+  assert(internalDepartment, "Internal task verification needs a department outside Cell 0");
+  const internalInput = {
+    title: `${workspaceId} internal`, department: internalDepartment.id, subTeam: internalDepartment.groups[0],
+    dueAt: input.dueAt, instructions: "Temporary internal task verification", notes: workspaceId,
+  };
+  const setInternalRole = (isLeader: boolean, approved = true) => productionRepository.update((current) => ({
+    ...current, users: current.users.map((user) => user.id === workspaceId
+      ? { ...user, department: internalDepartment.id, groups: [internalInput.subTeam], isLeader, approved } : user),
+  }));
+  const createInternal = (taskInput = internalInput) => fetch(`${root}/api/actions`, {
+    method: "POST", headers, body: JSON.stringify({ type: "create-task", input: taskInput }),
+  });
+  await setInternalRole(true);
+  assert.equal((await createInternal()).status, 200, "Approved department leader can create internal tasks");
+  assert((await productionRepository.read()).tasks.some((item) => item.title === internalInput.title && item.department === internalDepartment.id));
+  const cell0 = liveState.catalog.departments.find((department) => department.id === "cell-0")!;
+  assert.equal((await createInternal({ ...internalInput, department: "cell-0", subTeam: cell0.groups[0] })).status, 400, "Department leader cannot create Cell 0 tasks");
+  await setInternalRole(false);
+  assert.equal((await createInternal()).status, 400, "Demotion takes effect with the existing token");
+  await setInternalRole(true, false);
+  assert.equal((await createInternal()).status, 401, "Disabled sign-in prevents task creation");
+  console.log("PASS live internal tasks: approved department leader creates and persists; other department, demotion and disabled sign-in denied with the same managed token");
   await productionRepository.update((current) => ({ ...current, users: current.users.map((user) => user.id === workspaceId ? state.users[0] : user) }));
   const liveExport = await fetch(`${root}/api/reports/export`, { method: "POST", headers, body: JSON.stringify({ month: "2026-10", csv }) });
   assert.equal(liveExport.status, 201);
@@ -279,7 +302,7 @@ try {
     ...current,
     users: current.users.filter((user) => user.id !== workspaceId),
     requests: current.requests.filter((request) => request.id !== liveRequestId),
-    tasks: current.tasks.filter((task) => !liveRequestId || task.requestId !== liveRequestId),
+    tasks: current.tasks.filter((task) => (!liveRequestId || task.requestId !== liveRequestId) && task.title !== `${workspaceId} internal`),
     activities: current.activities.filter((activity) => !activity.text.includes(workspaceId) && !(liveReference && activity.text.includes(liveReference))),
     notifications: current.notifications.filter((notification) => !notification.text.includes(workspaceId) && !(liveReference && notification.text.includes(liveReference))),
   }));

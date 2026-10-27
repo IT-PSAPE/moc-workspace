@@ -14,6 +14,7 @@
     "check:contrast": "node scripts/check-contrast.mjs",
     "shots": "node scripts/shoot.mjs",
     "verify:ui": "node scripts/check-ui-flows.mjs",
+    "verify:internal-tasks": "node scripts/check-internal-tasks.mjs",
     "db:migrate": "tsx scripts/neon-db.ts",
     "verify:neon": "tsx scripts/check-neon.ts",
     "verify:quotes": "tsx scripts/check-banner-quotes.ts",

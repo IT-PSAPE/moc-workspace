@@ -23,6 +23,14 @@ const makeId = (prefix: string) =>
 const isCell0 = (user: Leader) => user.department === "cell-0";
 const isLeader = (user: Leader) => user.approved && user.isLeader;
 const isCell0Leader = (user: Leader) => isCell0(user) && isLeader(user);
+export function canCreateInternalTask(
+  user: Member | null | undefined,
+  department: string,
+): boolean {
+  return Boolean(user?.approved && user.isLeader &&
+    (isCell0(user) || user.department === department));
+}
+
 const requireCell0 = (user: Leader, action: string) => {
   if (!isCell0(user) || !isLeader(user))
     throw new Error(`Only an approved Cell 0 leader can ${action}.`);
@@ -1436,7 +1444,9 @@ export function applyAction(
       };
     }
     case "create-task": {
-      requireCell0(user, "create internal tasks");
+      requireLeader(user, "create internal tasks");
+      if (!canCreateInternalTask(user, action.input.department))
+        throw new Error("You can only create internal tasks in your own department.");
       const task = makeInternalTask(action.input, state.catalog);
       return {
         ...state,

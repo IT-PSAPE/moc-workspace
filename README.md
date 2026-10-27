@@ -33,7 +33,7 @@ With a root `DATABASE_URL`, the API uses Neon Postgres and managed authenticatio
 
 Both frontends use TypeScript, React, Tailwind CSS and Base UI. The workspace uses TanStack Router; both applications use TanStack Query. The frontend follows current moc-console patterns for its compact icon rail, contextual navigation, public request flow, and self-hosted DM Sans and Geist Mono typography. Shared tokens and primitives live in `packages/ui`, alongside application-specific styles. See [DESIGN.md](docs/DESIGN.md) for the design rationale.
 
-Current approved members sign in with a verified invited email. Member access and leadership are separate: approved members retain the task permissions for their department, current leaders manage request types and ministries in Settings → Public request, and Cell 0 leaders manage members, departments, and request review. Cell 0 also manages its private work, internal tasks, and monthly reports. Team notes are private to Cell 0 and the owning department; public tracking never includes them. Department calendars show members their own deadlines, while Cell 0 sees all. See [MANAGED-REQUESTS.md](docs/MANAGED-REQUESTS.md) for the persisted membership and authorization contract.
+Current approved members sign in with a verified invited email. Sign-in approval and leadership are separate: approved members retain the task permissions for their department, approved leaders can create internal tasks in their own department and manage request types and ministries in Settings → Public request, and Cell 0 leaders manage members, departments, and request review. Cell 0 leaders can also create internal tasks across departments and manage private Cell 0 work and monthly reports. The member table labels sign-in approval as “Sign-in enabled”. Team notes are private to Cell 0 and the owning department; public tracking never includes them. Department calendars show members their own deadlines, while Cell 0 sees all. See [MANAGED-REQUESTS.md](docs/MANAGED-REQUESTS.md) for the persisted membership and authorization contract.
 
 ## Verification
 
@@ -44,6 +44,7 @@ npm run build
 npm run check:contrast   # checks named token contrast pairings
 npm run shots            # screenshot states at four viewports using isolated demo data
 npm run verify:ui        # real request/edit/approval/completion/tracking browser flow
+npm run verify:internal-tasks # department leader creation and member sign-in settings
 ```
 
 The review record lists the current test totals and rendered-state coverage. Browser checks use an isolated API store and cover request submission, editing, approval/routing, completion, tracking, and responsive layouts.

@@ -51,6 +51,71 @@ afterEach(async () => {
 });
 
 describe("MOC API", () => {
+  it.each(["cell-0", "sound", "design", "visual-media"])("lets an approved %s leader create and persist an internal task", async (department) => {
+    const { repository, login, action } = await makeBulkActionHarness();
+    const cookie = await login(department);
+    const before = await repository.read();
+    const input = {
+      title: "Leader-created internal task", department,
+      subTeam: before.catalog.departments.find((item) => item.id === department)!.groups[0],
+      dueAt: new Date(Date.now() + 7 * 86400000).toISOString(),
+      instructions: "Prepare the team deliverable.", notes: "Internal coordination.",
+    };
+    const response = await action(cookie, { type: "create-task", input });
+    expect(response.status).toBe(200);
+    const stored = await repository.read();
+    expect(stored.tasks).toHaveLength(before.tasks.length + 1);
+    expect(stored.tasks.at(-1)).toMatchObject({ ...input, status: "pending", service: "internal" });
+    expect(stored.tasks.at(-1)?.requestId).toBeUndefined();
+    expect(stored.requests).toEqual(before.requests);
+  });
+
+  it("keeps cross-department task creation restricted to Cell 0 leaders", async () => {
+    const { repository, login, action } = await makeBulkActionHarness();
+    const soundCookie = await login("sound");
+    const cell0Cookie = await login("cell-0");
+    for (const department of ["design", "cell-0"]) {
+      const before = await repository.read();
+      const input = {
+        title: "Cross-department task", department,
+        subTeam: before.catalog.departments.find((item) => item.id === department)!.groups[0],
+        dueAt: new Date(Date.now() + 7 * 86400000).toISOString(),
+        instructions: "Prepare the team deliverable.", notes: "Internal coordination.",
+      };
+      const denied = await action(soundCookie, { type: "create-task", input });
+      expect(denied.status).toBe(400);
+      expect(await denied.json()).toMatchObject({ error: expect.stringMatching(/own department/i) });
+      expect(await repository.read()).toEqual(before);
+      expect((await action(cell0Cookie, { type: "create-task", input })).status).toBe(200);
+    }
+  });
+
+  it.each(["sound", "cell-0"])("uses persisted %s leadership and sign-in approval for task creation", async (department) => {
+    const { repository, login, action } = await makeBulkActionHarness();
+    const cookie = await login(department);
+    const actor = (await repository.read()).users.find((member) => member.department === department)!;
+    const input = {
+      title: "Current membership task", department, subTeam: actor.groups[0],
+      dueAt: new Date(Date.now() + 7 * 86400000).toISOString(),
+      instructions: "Prepare the team deliverable.", notes: "Internal coordination.",
+    };
+    const setRole = (isLeader: boolean, approved = true) => repository.update((current) => ({
+      ...current, users: current.users.map((member) => member.id === actor.id ? { ...member, isLeader, approved } : member),
+    }));
+    await setRole(false);
+    const memberState = await repository.read();
+    const denied = await action(cookie, { type: "create-task", input });
+    expect(denied.status).toBe(400);
+    expect(await denied.json()).toMatchObject({ error: expect.stringMatching(/approved leader/i) });
+    expect(await repository.read()).toEqual(memberState);
+    await setRole(true);
+    expect((await action(cookie, { type: "create-task", input })).status).toBe(200);
+    await setRole(true, false);
+    const disabledState = await repository.read();
+    expect((await action(cookie, { type: "create-task", input })).status).toBe(401);
+    expect(await repository.read()).toEqual(disabledState);
+  });
+
   it("persists public option availability while preserving existing request edits and tracking", async () => {
     const { app, repository, statePath, login, action } = await makeBulkActionHarness();
     const cookie = await login("sound");

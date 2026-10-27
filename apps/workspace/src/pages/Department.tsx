@@ -14,6 +14,7 @@ import { Button, Field, Modal } from "@moc/ui";
 import { FilterDrawer } from "../components/UiDialogs";
 import DetailsDrawer from "../components/DetailsDrawer";
 import {
+  canCreateInternalTask,
   type Department as DepartmentId,
   type SubTeam,
   type Task,
@@ -239,7 +240,7 @@ export default function DepartmentPage({
         <div className="page-heading">
           <h1>{departmentInfo.name}</h1>
         </div>
-        {isCell0Leader && (
+        {canCreateInternalTask(user, department) && (
           <Button
             variant="primary"
             onClick={() => {
@@ -529,8 +530,8 @@ export default function DepartmentPage({
       >
         <form className="workflow-form" onSubmit={createTask}>
           <p className="form-intro">
-            Add private work for a production team. Cell 0 will be able to track
-            and update this task.
+            Add work for {departmentInfo.name}. Your department and Cell 0 leaders
+            can track and update this task.
           </p>
           <Field label="Task title">
             <input

@@ -158,10 +158,7 @@ export function createApiApp(
   app.get("/api/session", async (c) => {
     const session = await resolveSession(c);
     if (session.user) {
-      const state = await repository.read();
-      const currentUser = state.users.find(
-        (user) => user.id === session.user?.id && user.approved,
-      );
+      const currentUser = await repository.findApprovedLeaderById(session.user.id);
       return c.json(
         currentUser
           ? { ...session, user: currentUser }
@@ -181,7 +178,7 @@ export function createApiApp(
   );
 
   app.get("/api/catalog", async (c) => {
-    const { catalog } = await repository.read();
+    const catalog = await repository.readCatalog();
     return c.json({
       services: catalog.services,
       ministries: catalog.ministries,
@@ -193,10 +190,7 @@ export function createApiApp(
   app.get("/api/integrations", async (c) => {
     const session = await resolveSession(c);
     if (!isApproved(session)) return unauthorized(c);
-    const state = await repository.read();
-    const currentUser = state.users.find(
-      (user) => user.id === session.user.id && user.approved,
-    );
+    const currentUser = await repository.findApprovedLeaderById(session.user.id);
     if (!currentUser) return unauthorized(c);
     if (currentUser.department !== "cell-0" || !currentUser.isLeader)
       return c.json({ error: "Only Cell 0 leaders can view integration status." }, 403);
@@ -222,8 +216,7 @@ export function createApiApp(
   app.post("/api/reports/export", async (c) => {
     const session = await resolveSession(c);
     if (!isApproved(session)) return unauthorized(c);
-    const state = await repository.read();
-    const actor = state.users.find((user) => user.id === session.user.id && user.approved);
+    const actor = await repository.findApprovedLeaderById(session.user.id);
     if (!actor || !actor.isLeader || actor.department !== "cell-0")
       return c.json({ error: "Only Cell 0 leaders can export reports." }, 403);
     if (!options.reportStorage) return c.json({ error: "Report storage is not configured." }, 503);
@@ -237,8 +230,7 @@ export function createApiApp(
   app.post("/api/workspace/live", async (c) => {
     const session = await resolveSession(c);
     if (!isApproved(session)) return unauthorized(c);
-    const state = await repository.read();
-    if (!state.users.some((user) => user.id === session.user.id && user.approved)) return unauthorized(c);
+    if (!await repository.findApprovedLeaderById(session.user.id)) return unauthorized(c);
     if (!options.sealWorkspace) return c.json({ error: "Live updates are not configured." }, 503);
     return c.json(await options.sealWorkspace(session.user.id));
   });

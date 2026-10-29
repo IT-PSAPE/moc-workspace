@@ -3,12 +3,14 @@ import {
   QueryClientProvider,
   useQuery,
   useQueryClient,
+  queryOptions,
+  focusManager,
 } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createRealtimeClient, type SealedLiveQuery } from "@neon/realtime/client";
 import { RealtimeProvider, useLiveQuery } from "@neon/realtime-react";
 import { authHeaders, neonAuth } from "./auth";
-import { millisecondsUntilNextQuoteDay } from "@moc/shared";
+import { isPermanentRequestError, PUBLIC_CATALOG_REFRESH_MS, retryQuery, WORKSPACE_FALLBACK_INTERVAL_MS, workspaceRefetchInterval } from "./query-policy";
 export { neonAuth, signInWithGoogle } from "./auth";
 import type {
   Department,
@@ -16,6 +18,7 @@ import type {
   Session,
   WorkspaceState,
   WorkspaceAction,
+  Catalog,
 } from "@moc/shared";
 
 const environment = (
@@ -52,8 +55,19 @@ export async function api<T>(
 }
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { retry: 1, refetchOnWindowFocus: true, staleTime: 15000 },
+    queries: {
+      retry: retryQuery,
+      refetchOnWindowFocus: (query) => !isPermanentRequestError(query.state.error),
+      refetchOnReconnect: (query) => !isPermanentRequestError(query.state.error),
+      staleTime: 60_000,
+    },
   },
+});
+export const publicCatalogOptions = queryOptions({
+  queryKey: ["public-catalog"],
+  queryFn: () => api<Catalog>("/api/catalog"),
+  staleTime: PUBLIC_CATALOG_REFRESH_MS,
+  refetchInterval: (query) => isPermanentRequestError(query.state.error) ? false : PUBLIC_CATALOG_REFRESH_MS,
 });
 interface WorkspaceRevision { id: string; revision: string }
 const realtimeClient = environment?.VITE_NEON_REALTIME_URL
@@ -61,26 +75,47 @@ const realtimeClient = environment?.VITE_NEON_REALTIME_URL
 
 export function ClientProvider({ children, liveWorkspace = false }: { children: ReactNode; liveWorkspace?: boolean }) {
   const content = <QueryClientProvider client={queryClient}>
-    {liveWorkspace && realtimeClient ? <WorkspaceRealtimeSync /> : null}
+    {liveWorkspace ? <WorkspaceSync /> : null}
     {children}
   </QueryClientProvider>;
   return liveWorkspace && realtimeClient
     ? <RealtimeProvider client={realtimeClient}>{content}</RealtimeProvider> : content;
 }
 
-function WorkspaceRealtimeSync() {
+function WorkspaceSync() {
   const { session } = useSession();
+  const focused = useSyncExternalStore(focusManager.subscribe, () => focusManager.isFocused(), () => true);
   const userId = session?.user?.approved ? session.user.id : undefined;
+  const [liveUserId, setLiveUserId] = useState<string>();
+  const onLiveChange = useCallback((live: boolean) => setLiveUserId(live ? userId : undefined), [userId]);
+  // Only this observer owns timers. Pages and dialogs share its cached result.
+  useQuery({
+    ...workspaceOptions(session),
+    refetchInterval: (query) => workspaceRefetchInterval(Boolean(userId && liveUserId === userId), query.state.error),
+    refetchOnWindowFocus: (query) => isPermanentRequestError(query.state.error) ? false : "always",
+    refetchOnReconnect: (query) => isPermanentRequestError(query.state.error) ? false : "always",
+  });
   const queryKey = ["workspace-live", userId];
   const fetchSealed = useCallback(() => api<SealedLiveQuery<WorkspaceRevision>>("/api/workspace/live", { method: "POST" }), [userId]);
-  const sealed = useQuery({ queryKey, queryFn: fetchSealed, enabled: Boolean(userId), refetchOnWindowFocus: false });
-  return userId && sealed.data ? <LiveWorkspaceRevision key={`${userId}-${sealed.data.capability}`} sealed={sealed.data} refresh={fetchSealed} /> : null;
+  const sealed = useQuery({
+    queryKey, queryFn: fetchSealed, enabled: Boolean(userId && realtimeClient && focused),
+    // Returning to the tab obtains a fresh capability before resubscribing.
+    staleTime: 0, refetchOnWindowFocus: false,
+    refetchInterval: (query) => query.state.error && !isPermanentRequestError(query.state.error) ? WORKSPACE_FALLBACK_INTERVAL_MS : false,
+  });
+  return focused && userId && sealed.isSuccess && !sealed.isFetching
+    ? <LiveWorkspaceRevision key={userId} sealed={sealed.data} refresh={fetchSealed} onLiveChange={onLiveChange} /> : null;
 }
 
-function LiveWorkspaceRevision({ sealed, refresh }: { sealed: SealedLiveQuery<WorkspaceRevision>; refresh: () => Promise<SealedLiveQuery<WorkspaceRevision>> }) {
+function LiveWorkspaceRevision({ sealed, refresh, onLiveChange }: { sealed: SealedLiveQuery<WorkspaceRevision>; refresh: () => Promise<SealedLiveQuery<WorkspaceRevision>>; onLiveChange: (live: boolean) => void }) {
   const { data, status } = useLiveQuery(sealed, { refreshQuery: refresh });
   const revision = data?.[0]?.revision;
+  const hasSnapshot = data !== undefined;
   const previous = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    onLiveChange(status === "live" && hasSnapshot);
+    return () => onLiveChange(false);
+  }, [status, hasSnapshot, onLiveChange]);
   useEffect(() => {
     if (status !== "live" || data === undefined) return;
     if (!data.length) {
@@ -101,6 +136,26 @@ const empty: WorkspaceState = {
   activities: [],
   notifications: [],
 };
+function workspaceOptions(session: Session | undefined) {
+  return queryOptions({
+    queryKey: ["workspace", session?.user?.id],
+    queryFn: async () => {
+      try {
+        return await api<WorkspaceState>("/api/workspace");
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401)
+          void queryClient.invalidateQueries({ queryKey: ["session"] });
+        throw error;
+      }
+    },
+    enabled: !!session?.user?.approved,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    // New observers must retain the recovery UI after an initial failure.
+    retryOnMount: false,
+  });
+}
 export function useSession() {
   const query = useQuery({
     queryKey: ["session"],
@@ -132,23 +187,7 @@ export function useSession() {
 export function useWorkspace() {
   const client = useQueryClient();
   const { session, loading: sessionLoading } = useSession();
-  const query = useQuery({
-    queryKey: ["workspace", session?.user?.id],
-    queryFn: async () => {
-      try {
-        return await api<WorkspaceState>("/api/workspace");
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 401)
-          void client.invalidateQueries({ queryKey: ["session"] });
-        throw error;
-      }
-    },
-    enabled: !!session?.user?.approved,
-    // A page mounting after the shell's initial failure must not restart the
-    // same failed request and replace the recovery UI with another loader.
-    retryOnMount: false,
-    refetchInterval: () => Math.min(15000, millisecondsUntilNextQuoteDay()),
-  });
+  const query = useQuery(workspaceOptions(session));
   const user = session?.user as Leader;
   async function act(action: WorkspaceAction) {
     const send = () =>

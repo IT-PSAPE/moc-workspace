@@ -18,6 +18,8 @@ import { DEMO_TRACKING_CODES, hashTrackingCode } from "./tracking";
 
 export interface Repository {
   read(): Promise<WorkspaceState>;
+  readCatalog(): Promise<Catalog>;
+  findApprovedLeaderById(id: string): Promise<Leader | null>;
   update(
     mutator: (state: WorkspaceState) => WorkspaceState,
   ): Promise<WorkspaceState>;
@@ -122,68 +124,7 @@ export function parseState(source: string): WorkspaceState {
       text: normalizeLegacyStatusText(notification.text),
     };
   });
-  const users = candidate.users.map((member) => {
-    if (!isRecord(member)) throw new Error("Workspace member is malformed");
-    const legacyMember = member as Leader & { rank?: unknown };
-    const { rank, ...currentMember } = legacyMember;
-    if (
-      typeof currentMember.id !== "string" ||
-      typeof currentMember.name !== "string" ||
-      typeof currentMember.email !== "string" ||
-      typeof currentMember.department !== "string" ||
-      typeof currentMember.approved !== "boolean"
-    )
-      throw new Error("Workspace member is missing required fields");
-    if (rank !== undefined && (typeof rank !== "string" || !rank.trim()))
-      throw new Error("Legacy member duty is malformed");
-    if (
-      currentMember.duty !== undefined &&
-      (typeof currentMember.duty !== "string" || !currentMember.duty.trim())
-    )
-      throw new Error("Workspace member duty is malformed");
-    if (
-      currentMember.groups !== undefined &&
-      (!Array.isArray(currentMember.groups) ||
-        currentMember.groups.length === 0 ||
-        currentMember.groups.some((group) => typeof group !== "string"))
-    )
-      throw new Error("Workspace member groups are malformed");
-    if (
-      currentMember.isLeader !== undefined &&
-      typeof currentMember.isLeader !== "boolean"
-    )
-      throw new Error("Workspace member leadership status is malformed");
-    const defaultGroups = catalog.departments.find(
-      (department) => department.id === currentMember.department,
-    )?.groups;
-    if (!currentMember.duty && typeof rank !== "string")
-      throw new Error("Workspace member is missing legacy duty data");
-    if (!currentMember.groups && !defaultGroups)
-      throw new Error("Workspace member department is missing from the catalog");
-    const department = catalog.departments.find(
-      (item) => item.id === currentMember.department,
-    );
-    const groups = currentMember.groups ?? defaultGroups ?? [];
-    if (!department || groups.some((group) => !department.groups.includes(group)))
-      throw new Error("Workspace member groups do not match the department catalog");
-    return {
-      ...currentMember,
-      duty:
-        typeof currentMember.duty === "string" && currentMember.duty.trim()
-          ? currentMember.duty
-          : typeof rank === "string" && rank.trim()
-            ? rank
-            : "Member",
-      groups:
-        Array.isArray(currentMember.groups) && currentMember.groups.length > 0
-          ? [...currentMember.groups]
-          : [...(defaultGroups ?? [])],
-      isLeader:
-        typeof currentMember.isLeader === "boolean"
-          ? currentMember.isLeader
-          : true,
-    };
-  });
+  const users = candidate.users.map((member) => parseMember(member, catalog));
   for (const task of tasks) {
     const department = catalog.departments.find(
       (item) => item.id === task.department,
@@ -246,7 +187,70 @@ function isIsoTimestamp(value: unknown): value is string {
     Number(hour) <= 23 && Number(minute) <= 59 && Number(second) <= 59;
 }
 
-function parseCatalog(value: unknown, legacyTaskMinistries: string[] = []): Catalog {
+export function parseMember(member: unknown, catalog: Catalog): Leader {
+  if (!isRecord(member)) throw new Error("Workspace member is malformed");
+  const legacyMember = member as unknown as Leader & { rank?: unknown };
+  const { rank, ...currentMember } = legacyMember;
+  if (
+    typeof currentMember.id !== "string" ||
+    typeof currentMember.name !== "string" ||
+    typeof currentMember.email !== "string" ||
+    typeof currentMember.department !== "string" ||
+    typeof currentMember.approved !== "boolean"
+  )
+    throw new Error("Workspace member is missing required fields");
+  if (rank !== undefined && (typeof rank !== "string" || !rank.trim()))
+    throw new Error("Legacy member duty is malformed");
+  if (
+    currentMember.duty !== undefined &&
+    (typeof currentMember.duty !== "string" || !currentMember.duty.trim())
+  )
+    throw new Error("Workspace member duty is malformed");
+  if (
+    currentMember.groups !== undefined &&
+    (!Array.isArray(currentMember.groups) ||
+      currentMember.groups.length === 0 ||
+      currentMember.groups.some((group) => typeof group !== "string"))
+  )
+    throw new Error("Workspace member groups are malformed");
+  if (
+    currentMember.isLeader !== undefined &&
+    typeof currentMember.isLeader !== "boolean"
+  )
+    throw new Error("Workspace member leadership status is malformed");
+  const defaultGroups = catalog.departments.find(
+    (department) => department.id === currentMember.department,
+  )?.groups;
+  if (!currentMember.duty && typeof rank !== "string")
+    throw new Error("Workspace member is missing legacy duty data");
+  if (!currentMember.groups && !defaultGroups)
+    throw new Error("Workspace member department is missing from the catalog");
+  const department = catalog.departments.find(
+    (item) => item.id === currentMember.department,
+  );
+  const groups = currentMember.groups ?? defaultGroups ?? [];
+  if (!department || groups.some((group) => !department.groups.includes(group)))
+    throw new Error("Workspace member groups do not match the department catalog");
+  return {
+    ...currentMember,
+    duty:
+      typeof currentMember.duty === "string" && currentMember.duty.trim()
+        ? currentMember.duty
+        : typeof rank === "string" && rank.trim()
+          ? rank
+          : "Member",
+    groups:
+      Array.isArray(currentMember.groups) && currentMember.groups.length > 0
+        ? [...currentMember.groups]
+        : [...(defaultGroups ?? [])],
+    isLeader:
+      typeof currentMember.isLeader === "boolean"
+        ? currentMember.isLeader
+        : true,
+  };
+}
+
+export function parseCatalog(value: unknown, legacyTaskMinistries: string[] = []): Catalog {
   const isLegacyStateWithoutCatalog = value === undefined;
   if (!isLegacyStateWithoutCatalog && !isRecord(value))
     throw new Error("Workspace catalog is malformed");
@@ -481,6 +485,14 @@ export class JsonRepository implements Repository {
     } finally {
       release?.();
     }
+  }
+
+  async readCatalog(): Promise<Catalog> {
+    return (await this.read()).catalog;
+  }
+
+  async findApprovedLeaderById(id: string): Promise<Leader | null> {
+    return (await this.read()).users.find((user) => user.id === id && user.approved) ?? null;
   }
 
   async findApprovedLeaderByGoogleEmail(email: string): Promise<Leader | null> {

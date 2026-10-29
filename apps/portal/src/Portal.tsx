@@ -31,7 +31,7 @@ import {
   type Service,
   type SubmissionReceipt,
 } from "@moc/shared";
-import { api, ApiError } from "@moc/client";
+import { api, ApiError, publicCatalogOptions } from "@moc/client";
 import "./styles.css";
 
 type Screen = "home" | "request" | "track";
@@ -306,13 +306,7 @@ export default function Portal() {
     if (copyFailed) copyFallbackRef.current?.select();
   }, [copyFailed]);
 
-  const catalogQuery = useQuery({
-    queryKey: ["public-catalog"],
-    queryFn: () => api<Catalog>("/api/catalog"),
-    staleTime: 30 * 1000,
-    refetchInterval: 30 * 1000,
-    refetchOnWindowFocus: "always",
-  });
+  const catalogQuery = useQuery(publicCatalogOptions);
 
   const services = catalogQuery.data?.services ?? [];
   const ministries = useMemo(

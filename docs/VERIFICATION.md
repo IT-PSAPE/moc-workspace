@@ -221,3 +221,86 @@ API routes return 401 without an approved, verified managed identity.
 Evidence: `output/reviews/vercel-deploy/` and
 `output/playwright/vercel/` (ignored local artifacts). See `docs/VERCEL.md` for
 repeatable deployment and environment configuration commands.
+
+## Transfer investigation and reduction, 2026-10-29
+
+The Neon project reported 5,630,069,721 transferred bytes on its Free plan.
+Managed Auth returned HTTP 402 with `GENERIC_QUOTA_EXCEEDED`; the production
+public catalog returned the same quota message through the API. Historical SQL
+statistics could not be read because of that block. Vercel route metrics require
+Observability Plus, unavailable on the current plan. Consequently, the historical
+5.63 GB cannot be apportioned exactly among application reads, Auth, replication,
+and other services from the evidence available.
+
+Source tracing found concrete amplification: every `useWorkspace` observer set
+a 15-second interval alongside Realtime; protected reads loaded the entire JSONB
+workspace during member lookup, then again in the route; the public catalog
+loaded the full workspace every 30 seconds. TanStack Query deduplicates concurrent
+requests, but each observer owns its interval, and polling runs independently of
+`staleTime`. Router and table rendering do not issue database queries themselves.
+
+The changes establish one provider refresh observer, use revision invalidation
+while Realtime is live, retain a five-minute foreground fallback and the daily
+quote boundary, cache the catalog for fifteen minutes, and stop automatic retries
+and polling for permanent/quota failures. SQL now projects catalog/member data
+instead of transferring the task/request aggregate for these reads. Member and
+catalog validation, legacy normalization and fresh authorization are preserved.
+Unrelated changes no longer rewrite unchanged membership mirror rows.
+
+Measured with the same isolated seed data and a 65-second Settings/portal browser
+workload, including initial loads, using the initial one-minute fallback and
+five-minute catalog configuration before the short-visit tuning below:
+
+| Measurement | Before | After |
+| --- | ---: | ---: |
+| Full workspace HTTP requests | 5 | 2 |
+| Public catalog HTTP requests | 3 | 1 |
+| Combined response body bytes | 122,080 | 48,271 |
+
+This is about 60% less application response data in the measured fallback
+workload; it is not a measured reduction of the historical Neon usage total.
+With mocked Realtime transport connected, the actual UI made no periodic
+workspace requests during an idle minute. A revision change refreshed the
+visible member name, disconnect enabled one fallback request per five minutes,
+reconnect stopped fallback polling, Johannesburg midnight triggered a refresh,
+and an empty membership snapshot returned the user to login.
+
+An isolated local PostgreSQL instance using the real migrations and repository
+measured incoming wire bytes: full workspace 23,887; catalog 3,089 (87% less);
+member lookup 3,302 (86% less). SQL checks also proved immediate revocation,
+unchanged membership row versions after unrelated writes, and legacy member
+normalization. These are seed-fixture measurements, not production payload sizes.
+
+Validation: typecheck, all 137 unit/API tests across 11 files, production builds,
+`verify:query-traffic`, `verify:postgres-egress`, the complete `verify:ui` flow at
+1440/390 pixels, and `verify:internal-tasks` at 1440/834/390/320 pixels passed.
+The existing UI script needed to close the invitation dialog before editing a
+background member row; its previous sequence was blocked by the dialog's normal
+accessibility isolation. No application behavior was changed for that test fix.
+
+Separate code and rendered interface self-review: PASS for this local patch and
+the exercised desktop/mobile states. An independent reviewer was unavailable.
+Production Google OAuth and real Neon Realtime remain unverified for this patch
+because the quota blocks the live service. Full aggregate reads/writes remain a
+growth cost; splitting large task/activity history into scoped, paginated storage
+is a later structural improvement. The patch has not been deployed and cannot
+clear already-consumed quota.
+
+Short-visit tuning on the same date extends fallback refreshes to five minutes
+and public catalog caching to fifteen minutes. Local action responses still
+update the workspace cache immediately, and tab return refreshes the workspace.
+TanStack's shared focus manager now unmounts the live subscription while hidden,
+which stops the installed Realtime binding's renewal controller and subscription.
+On return, a fresh capability is fetched before resubscribing so an expired
+cached capability is not reused after a long absence.
+
+The updated browser check proves no fallback request during a brief visit, one
+fallback request after five minutes, no API requests or live subscription during
+twenty simulated background minutes, and fresh workspace/capability requests
+plus a visible subscription after returning. Fifteen-minute catalog refresh,
+live changes, daily quote rollover, revocation and desktop/mobile rendering also
+pass. The 14 policy tests and workspace typecheck pass. Separate code/interface
+self-review: PASS for the tuned local patch; no independent reviewer was used.
+
+Evidence: `output/playwright/egress/{baseline,after,query-traffic-verification,postgres-verification}.json`,
+rendered screenshots in that directory and its `flows/` and `internal/` folders.

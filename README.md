@@ -45,6 +45,8 @@ npm run check:contrast   # checks named token contrast pairings
 npm run shots            # screenshot states at four viewports using isolated demo data
 npm run verify:ui        # real request/edit/approval/completion/tracking browser flow
 npm run verify:internal-tasks # department leader creation and member sign-in settings
+npm run verify:query-traffic # isolated browser checks for caching, Realtime and fallback requests
+npm run verify:postgres-egress # wire-byte measurements; requires local Postgres tools
 ```
 
 The review record lists the current test totals and rendered-state coverage. Browser checks use an isolated API store and cover request submission, editing, approval/routing, completion, tracking, and responsive layouts.

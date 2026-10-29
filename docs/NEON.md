@@ -89,6 +89,23 @@ continue to pass through the existing API's role projection. The React Realtime
 binding renews sealed queries and invalidates TanStack Query when revisions
 change; saving from another browser updates task and request views.
 
+One provider observer owns workspace refresh scheduling. Page and dialog hooks
+share its TanStack Query cache without creating polling timers. While Realtime
+is live, the workspace refreshes on revision changes, window focus/reconnect,
+manual refresh, and the Johannesburg daily quote boundary. Without Realtime,
+one foreground fallback refresh runs every five minutes. The public catalog is cached
+for fifteen minutes. Hidden tabs unsubscribe from live updates and stop capability
+renewals; returning obtains a fresh capability and refreshes workspace data.
+Local saves still update the shared cache immediately. Permanent request and quota failures stop automatic retries
+and polling; the user can retry manually after service is restored.
+
+Postgres member checks select the matching member and catalog, and public catalog
+reads select only the catalog. Neither transfers the task/request aggregate.
+Membership checks remain fresh on every protected request. Unchanged membership
+mirror rows are not rewritten during unrelated workspace updates, reducing
+unnecessary writes and replication. Full workspace reads and mutations still
+use the aggregate; its response size grows with task and activity history.
+
 The sealing secret stays server-side. Neon pulls `NEON_REALTIME_SECRET` locally
 but does not currently inject it into the Function; `deploy:neon` loads
 `.env.local` and maps it to a private `MOC_REALTIME_SECRET` Function variable.

@@ -462,6 +462,8 @@ try {
       .getByRole("heading", { name: "Invite a member", exact: true })
       .waitFor();
     await snap(workspace, "member-invite-form", width);
+    await workspace.getByRole("button", { name: "Close dialog", exact: true }).click();
+    await workspace.getByRole("heading", { name: "Invite a member", exact: true }).waitFor({ state: "hidden" });
     const memberRow = workspace
       .getByRole("row")
       .filter({ hasText: "Grace Ndlovu" });

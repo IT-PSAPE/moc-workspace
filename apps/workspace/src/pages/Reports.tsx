@@ -13,7 +13,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { DataTable, type DataTableColumnDef } from "@moc/ui";
-import { api, neonAuth, useWorkspace } from "@moc/client";
+import { API_URL, api, useWorkspace } from "@moc/client";
 import {
   createMonthlyReport,
   reportingMonthKey,
@@ -323,7 +323,7 @@ function WeeklyActivity({ report }: { report: MonthlyReport }) {
 }
 
 export default function ReportsPage() {
-  const { state, user, loading } = useWorkspace();
+  const { state, user, loading, demo } = useWorkspace();
   const [month, setMonth] = useState(() => reportingMonthKey(new Date()));
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
@@ -447,7 +447,7 @@ export default function ReportsPage() {
       ]),
     ];
     const csv = lines.map((row) => row.map(escapeCsv).join(",")).join("\r\n");
-    if (neonAuth) {
+    if (!demo) {
       setExporting(true);
       setExportError("");
       try {
@@ -455,7 +455,7 @@ export default function ReportsPage() {
           method: "POST", body: JSON.stringify({ month, csv }),
         });
         const anchor = document.createElement("a");
-        anchor.href = result.url;
+        anchor.href = `${API_URL}${result.url}`;
         anchor.download = result.filename;
         anchor.click();
       } catch (error) {

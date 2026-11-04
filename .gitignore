@@ -18,3 +18,5 @@ output/reviews/
 reviews/round1/
 .neon
 .vercel
+supabase/.temp/
+supabase/.branches/

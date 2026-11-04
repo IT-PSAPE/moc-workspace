@@ -10,7 +10,7 @@ const selected = process.argv[2] ? [process.argv[2]] : Object.keys(projects);
 if (selected.some((name) => !Object.hasOwn(projects, name))) throw new Error("Choose workspace, portal, or api.");
 
 function required(key) {
-  if (!source[key]) throw new Error(`Pull the Neon environment first; ${key} is missing.`);
+  if (!source[key]) throw new Error(`Fill the Supabase API environment first; ${key} is missing.`);
   return source[key];
 }
 function publicUrl(value) {
@@ -21,26 +21,15 @@ function publicUrl(value) {
 }
 
 const definitions = {
-  workspace: [
-    ["VITE_API_URL", "config", () => publicUrl(projects.api.url)],
-    ["VITE_PORTAL_URL", "config", () => publicUrl(projects.portal.url)],
-    ["VITE_NEON_AUTH_URL", "config", () => publicUrl(required("NEON_AUTH_BASE_URL"))],
-    ["VITE_NEON_REALTIME_URL", "config", () => publicUrl(required("NEON_REALTIME_URL"))],
-  ],
-  portal: [
-    ["VITE_API_URL", "config", () => publicUrl(projects.api.url)],
-    ["VITE_WORKSPACE_URL", "config", () => publicUrl(projects.workspace.url)],
-  ],
+  // Production ignores VITE_API_URL and always uses same-origin /api rewrites.
+  workspace: [["VITE_PORTAL_URL", "config", () => publicUrl(projects.portal.url)]],
+  portal: [["VITE_WORKSPACE_URL", "config", () => publicUrl(projects.workspace.url)]],
   api: [
-    ["DATABASE_URL", "secret", () => required("DATABASE_URL")],
-    ["NEON_REALTIME_SECRET", "secret", () => required("NEON_REALTIME_SECRET")],
-    ["AWS_ACCESS_KEY_ID", "secret", () => required("AWS_ACCESS_KEY_ID")],
-    ["AWS_SECRET_ACCESS_KEY", "secret", () => required("AWS_SECRET_ACCESS_KEY")],
-    ["NEON_AUTH_BASE_URL", "config", () => publicUrl(required("NEON_AUTH_BASE_URL"))],
-    ["NEON_AUTH_JWKS_URL", "config", () => publicUrl(required("NEON_AUTH_JWKS_URL"))],
-    ["AWS_ENDPOINT_URL_S3", "config", () => publicUrl(required("AWS_ENDPOINT_URL_S3"))],
-    ["AWS_REGION", "config", () => required("AWS_REGION")],
-    ["API_URL", "config", () => publicUrl(projects.api.url)],
+    ["SUPABASE_DATABASE_URL", "secret", () => required("SUPABASE_DATABASE_URL")],
+    ["SUPABASE_SECRET_KEY", "secret", () => required("SUPABASE_SECRET_KEY")],
+    ["SUPABASE_PUBLISHABLE_KEY", "config", () => required("SUPABASE_PUBLISHABLE_KEY")],
+    ["SUPABASE_URL", "config", () => publicUrl(required("SUPABASE_URL"))],
+    ["SUPABASE_REPORT_BUCKET", "config", () => source.SUPABASE_REPORT_BUCKET || "moc-reports"],
     ["WORKSPACE_URL", "config", () => publicUrl(projects.workspace.url)],
     ["API_ALLOWED_ORIGINS", "config", () => [publicUrl(projects.workspace.url), publicUrl(projects.portal.url), "http://localhost:5173", "http://localhost:5174"].join(",")],
     ["DEMO_MODE", "config", () => "false"],

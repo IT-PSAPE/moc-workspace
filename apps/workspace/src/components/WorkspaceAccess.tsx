@@ -1,6 +1,6 @@
 import { useId, useState, type ReactNode } from "react";
 import { AlertCircle, ArrowRight, ArrowUpRight, RefreshCw, ShieldCheck } from "lucide-react";
-import { API_URL, api, neonAuth, signInWithGoogle } from "@moc/client";
+import { api, authErrorMessages, signInWithGoogle } from "@moc/client";
 import { Button } from "@moc/ui";
 import type { Session } from "@moc/shared";
 import "./workspace-access.css";
@@ -53,7 +53,8 @@ export default function WorkspaceAccess({ session, loading, error, refresh }: {
   const [failure, setFailure] = useState("");
   const hintId = useId();
   const pendingApproval = Boolean(session?.user && !session.user.approved);
-  const message = error || failure;
+  const authError = authErrorMessages[new URLSearchParams(window.location.search).get("auth_error") || ""];
+  const message = error || failure || authError;
 
   async function perform(action: NonNullable<typeof busy>, operation: () => Promise<unknown>) {
     if (busy) return;
@@ -77,22 +78,16 @@ export default function WorkspaceAccess({ session, loading, error, refresh }: {
             {busy === "retry" ? "Checking access…" : "Check access"}<ArrowRight size={17} aria-hidden="true" />
           </Button>
           <Button disabled={Boolean(busy)} onClick={() => void perform("logout", async () => {
-            if (neonAuth) {
-              const result = await neonAuth.signOut();
-              if (result.error) throw new Error(result.error.message || "Could not sign out.");
-            }
             await api("/api/auth/logout", { method: "POST" });
             window.location.assign("/login");
           })}>{busy === "logout" ? "Signing out…" : "Sign out"}</Button>
         </> : <>
-          {neonAuth ? <Button className="login-google-button" disabled={Boolean(busy)} aria-describedby={hintId}
+          <Button className="login-google-button" disabled={Boolean(busy)} aria-describedby={hintId}
             onClick={() => void perform("signin", signInWithGoogle)}>
             {busy === "signin" ? <span className="login-button-spinner" aria-hidden="true" /> : <GoogleMark />}
             <span>{busy === "signin" ? "Opening Google…" : "Continue with Google"}</span>
             <ArrowRight className="login-button-arrow" size={17} aria-hidden="true" />
-          </Button> : <a className="button button-secondary login-google-button" aria-describedby={hintId} href={`${API_URL}/api/auth/google`}>
-            <GoogleMark /><span>Continue with Google</span><ArrowRight className="login-button-arrow" size={17} aria-hidden="true" />
-          </a>}
+          </Button>
           {import.meta.env.DEV && session?.demo && <Button variant="primary" disabled={Boolean(busy)} onClick={() => void perform("demo", async () => {
             await api<Session>("/api/auth/demo", { method: "POST", body: JSON.stringify({ department: "cell-0" }) });
             window.location.assign("/");

@@ -17,12 +17,12 @@
     "verify:internal-tasks": "node scripts/check-internal-tasks.mjs",
     "verify:query-traffic": "node scripts/check-query-traffic.mjs",
     "verify:postgres-egress": "tsx scripts/check-postgres-egress.ts",
-    "db:migrate": "tsx scripts/neon-db.ts",
-    "verify:neon": "tsx scripts/check-neon.ts",
+    "db:migrate": "tsx scripts/supabase-db.ts",
     "verify:quotes": "tsx scripts/check-banner-quotes.ts",
-    "deploy:neon": "neon deploy --update-existing --env .env.local",
     "vercel:env": "node scripts/configure-vercel-env.mjs",
-    "diagnose:egress": "tsx scripts/diagnose-neon-egress.ts"
+    "diagnose:egress": "tsx scripts/diagnose-postgres-egress.ts",
+    "supabase:setup": "tsx scripts/setup-supabase.ts",
+    "verify:supabase": "tsx scripts/check-supabase.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
@@ -37,18 +37,8 @@
   "overrides": {
     "esbuild": "^0.28.2",
     "zod": "^4.6.7",
-    "@neondatabase/auth": {
-      "zod": "^4.6.7"
-    },
-    "@neondatabase/auth-ui": {
-      "zod": "^4.6.7"
-    },
     "@vercel/cli-config": {
       "zod": "^4.6.7"
     }
-  },
-  "dependencies": {
-    "@neon/config": "^1.9.3",
-    "@neon/env": "^1.6.4"
   }
 }

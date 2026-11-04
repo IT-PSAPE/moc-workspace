@@ -1,7 +1,7 @@
 import type { Pool } from "pg";
 
 // Same additive change as migration 003. This allows a deployment made while
-// Neon is suspended to finish its schema upgrade when database access returns.
+// the database is unavailable to finish its schema upgrade when database access returns.
 export const priorityLiveMigrationSql = `ALTER TABLE moc.workspace_members
   ADD COLUMN IF NOT EXISTS live_revision bigint NOT NULL DEFAULT 0;`;
 

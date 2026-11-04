@@ -17,7 +17,7 @@ let browser;
 async function startVite(app, port) {
   const child = spawn(path.join(root, "node_modules/.bin/vite"), ["--host", "localhost", "--port", String(port), "--strictPort"], {
     cwd: path.join(root, "apps", app),
-    env: { ...process.env, VITE_API_URL: isolated.url, VITE_NEON_AUTH_URL: "", VITE_NEON_REALTIME_URL: "wss://egress-test.invalid/realtime", VITE_PORTAL_URL: portalUrl, VITE_WORKSPACE_URL: workspaceUrl },
+    env: { ...process.env, VITE_API_URL: isolated.url, VITE_PORTAL_URL: portalUrl, VITE_WORKSPACE_URL: workspaceUrl },
     stdio: ["ignore", "pipe", "pipe"],
   });
   processes.push(child);
@@ -33,21 +33,6 @@ async function startVite(app, port) {
     });
   });
 }
-
-const realtimeMock = `
-import React from '/node_modules/.vite/deps/react.js';
-const { useSyncExternalStore } = React;
-export function RealtimeProvider({ children }) { return children; }
-const subscribe = callback => { window.addEventListener('moc-live', callback); return () => window.removeEventListener('moc-live', callback); };
-const snapshot = () => window.__mocLive;
-export function useLiveQuery() {
-  React.useEffect(() => {
-    window.__mocLiveSubscriptions = (window.__mocLiveSubscriptions || 0) + 1;
-    return () => { window.__mocLiveSubscriptions -= 1; };
-  }, []);
-  return useSyncExternalStore(subscribe, snapshot, snapshot);
-}
-`;
 
 async function tick(page, milliseconds) {
   // Let real HTTP requests settle between virtual timer ticks.
@@ -79,9 +64,32 @@ try {
     window.__mocLive = { status: "live", data: [{ id: "moc", revision: "1" }] };
     window.__mocVisible = true;
     Object.defineProperty(document, "visibilityState", { configurable: true, get: () => window.__mocVisible ? "visible" : "hidden" });
+    // Mock only the API stream transport; exercise the actual client SSE parser
+    // and leave every workspace read and mutation on the real isolated API.
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = async (input, options) => {
+      if (new URL(typeof input === "string" ? input : input.url, location.origin).pathname !== "/api/workspace/events") return nativeFetch(input, options);
+      window.__mocLiveSubscriptions = (window.__mocLiveSubscriptions || 0) + 1;
+      let closed = false;
+      let controller;
+      const send = () => {
+        if (closed) return;
+        const live = window.__mocLive;
+        const event = live.status === "error" ? "paused" : !live.data?.length ? "revoked" : "revision";
+        const data = event === "revision" ? live.data[0] : {};
+        controller.enqueue(new TextEncoder().encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+      };
+      const close = () => {
+        if (closed) return;
+        closed = true; window.__mocLiveSubscriptions -= 1;
+        window.removeEventListener("moc-live", send);
+        controller.close();
+      };
+      const body = new ReadableStream({ start(value) { controller = value; window.addEventListener("moc-live", send); send(); }, cancel() { close(); } });
+      options?.signal?.addEventListener("abort", close, { once: true });
+      return new Response(body, { headers: { "content-type": "text/event-stream" } });
+    };
   });
-  await context.route("**/node_modules/.vite/deps/@neon_realtime-react.js*", (route) => route.fulfill({ contentType: "text/javascript", body: realtimeMock }));
-  await context.route(`${isolated.url}/api/workspace/live`, (route) => route.fulfill({ json: { capability: "test-capability" } }));
   const page = await context.newPage();
   await page.clock.install({ time: new Date("2026-10-29T10:00:00+02:00") });
   await page.goto(`${workspaceUrl}/settings`, { waitUntil: "networkidle" });
@@ -223,9 +231,8 @@ try {
   await tick(page, 20 * 60000);
   assert.deepEqual(counts, beforeBackground, "hidden tabs must not poll or renew live subscriptions");
   const returnResponse = page.waitForResponse((response) => response.url() === `${isolated.url}/api/workspace`);
-  const returnCapability = page.waitForResponse((response) => response.url() === `${isolated.url}/api/workspace/live`);
   await page.evaluate(() => { window.__mocVisible = true; window.dispatchEvent(new Event("visibilitychange")); });
-  await Promise.all([returnResponse, returnCapability]);
+  await returnResponse;
   await page.waitForFunction(() => window.__mocLiveSubscriptions === 1);
   await page.waitForLoadState("networkidle");
   await page.getByText("Grace Egress Check", { exact: true }).waitFor();

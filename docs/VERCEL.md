@@ -10,9 +10,9 @@ The public manifest is `deployments/vercel.json`.
 | API | `moc-workspace-api` | `apps/api` | https://moc-workspace-api.vercel.app |
 
 All projects include files outside their root directory so the npm workspaces
-and shared packages resolve. Both frontends use Vite with SPA fallback rewrites.
+and shared packages resolve. Both frontends use Vite with same-origin `/api` rewrites followed by SPA fallbacks.
 The API uses Vercel's native Hono support and `apps/api/app.js`, runs in Frankfurt
-near Neon, and attaches its shared Postgres pool to Vercel's function lifecycle.
+near the configured database, and attaches its shared Postgres pool to Vercel's function lifecycle.
 The build bundles the TypeScript runtime and shared workspace package before
 Vercel traces the JavaScript entrypoint, preserving valid Node ESM imports.
 Only the Vercel entrypoint trusts Vercel's managed client-IP header for tracking
@@ -27,16 +27,13 @@ storage credentials are exposed to either frontend.
 
 | Project | Config |
 | --- | --- |
-| Workspace | `VITE_API_URL`, `VITE_PORTAL_URL`, `VITE_NEON_AUTH_URL`, `VITE_NEON_REALTIME_URL` |
-| Portal | `VITE_API_URL`, `VITE_WORKSPACE_URL` |
-| API | `NEON_AUTH_BASE_URL`, `NEON_AUTH_JWKS_URL`, `AWS_ENDPOINT_URL_S3`, `AWS_REGION`, `API_URL`, `WORKSPACE_URL`, `API_ALLOWED_ORIGINS`, `DEMO_MODE` |
+| Workspace | `VITE_PORTAL_URL` |
+| Portal | `VITE_WORKSPACE_URL` |
+| API | `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_REPORT_BUCKET`, `WORKSPACE_URL`, `API_ALLOWED_ORIGINS`, `DEMO_MODE` |
 
-The API's four Secret values are `DATABASE_URL`, `NEON_REALTIME_SECRET`,
-`AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY`. The database URL is a Secret
-because it contains credentials. API/Auth/JWKS/Realtime/storage endpoint URLs
-contain no credentials and are Config values.
+The API's Secret values are `SUPABASE_DATABASE_URL` and `SUPABASE_SECRET_KEY`. Never deploy migration/source credentials or expose them with `VITE_`. Google OAuth client credentials are configured in Supabase Auth, not Vercel.
 
-To refresh variables from the ignored local Neon environment:
+Fill the ignored local Supabase environment first, then configure production variables:
 
 ```sh
 npm run vercel:env           # all three projects
@@ -64,10 +61,7 @@ Do not run these from an app subdirectory: the remote Root Directory setting
 already selects that app. Git integration has not been connected; these are
 explicit CLI deployments of the current local source.
 
-Neon remains the database, identity, private report storage and Realtime provider
-on `green-waterfall-60958039` / `production`. The workspace production origin is
-registered with Neon Auth and included in `neon.ts`'s Realtime allowed origins.
-The existing Neon Function remains available independently.
+Before deploying this conversion, complete [Supabase setup](SUPABASE.md). Production still runs the previous Neon release until that cutover. Deploy all three apps as a coordinated change, with a fresh workspace and a verified administrator. Old frontend bundles use incompatible Neon authentication.
 
 ## Verify
 
@@ -75,24 +69,15 @@ The existing Neon Function remains available independently.
 npm run typecheck
 npm test
 npm run build
-npm audit
-curl --fail https://moc-workspace-api.vercel.app/health
+npm run verify:postgres-egress
+npm run verify:query-traffic
 ```
 
-After the API is deployed, run the cloud integration workflow against it:
+After deployment, verify Google login/reload/logout, approved and denied access, public request/tracking, compact optimistic saves, private CSV download and a new request/comment between two signed-in browsers. Check the workspace origin's `/api/session` and `/api/workspace/events`; `/health` alone does not verify the database or OAuth. Exact setup, callback URLs and environment variables are in [SUPABASE.md](SUPABASE.md).
 
-```sh
-VERIFY_API_URL=https://moc-workspace-api.vercel.app \
-VERIFY_WORKSPACE_ORIGIN=https://moc-workspace.vercel.app \
-API_ALLOWED_ORIGINS=https://moc-workspace.vercel.app,https://moc-workspace-portal.vercel.app,http://localhost:5173,http://localhost:5174 \
-npm run verify:neon
-```
+## Historical Neon deployments
 
-This creates and cleans uniquely identified verification fixtures, exercises a
-managed identity, public submission, approval, task completion, private tracking,
-quote persistence, private report storage and Realtime. The optional `--browser`
-harness uses development source imports and is restricted to localhost. Verify
-the real production Google sign-in through the browser separately.
+The records below describe prior releases and are not evidence that the Supabase conversion has been deployed.
 
 ## Deployment state, 2026-10-24
 

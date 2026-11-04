@@ -13,6 +13,8 @@ dist
 apps/api/data
 output
 reviews
+supabase/.temp
+supabase/.branches
 .shots
 .playwright-cli
 .playwright-mcp

@@ -1,45 +1,15 @@
 # API authentication
 
-## Active Neon configuration
+The application uses Supabase Auth for Google OAuth, with all authentication operations handled by the API. Setup and exact environment variables are in [SUPABASE.md](SUPABASE.md).
 
-Neon Auth owns managed identity and durable browser sessions. The workspace uses
-its SDK for Google sign-in and attaches a bearer JWT to protected API calls. The
-API verifies branch JWKS/issuer/expiry, looks up the subject’s verified email in
-`neon_auth.user`, and rechecks approved workspace membership. Signup grants no
-access by itself. Managed sign-out and workspace access revocation are separate:
-an issued JWT can remain valid until expiry, while a removed membership is
-denied immediately. See [NEON.md](NEON.md).
+The browser navigates to same-origin `GET /api/auth/google`. The API's request-scoped Supabase SSR client generates a PKCE verifier cookie and redirects to Google through Supabase. Google returns to Supabase's `/auth/v1/callback`, then Supabase returns a one-use code to the workspace's `/api/auth/callback` API proxy. The API exchanges it, calls `auth.getUser()`, requires a confirmed email and Google identity, and resolves the currently approved member by email. Redirect destinations come from configured `WORKSPACE_URL`, never an untrusted `next` or forwarded host.
 
-The remaining sections describe the standalone local adapter, used only without
-Neon configuration. Its process-memory cookies are not used by the deployed API.
+Session/refresh cookies are HttpOnly, SameSite=Lax, host scoped, path `/`, and Secure in production. Only the API reads them. Supabase SSR refreshes expired sessions and writes every updated cookie and cache-control header to the response. Fresh API instances restore the same session; there is no production process-memory session map. Authentication and private responses are `private, no-store` to avoid caching one user's session for another.
 
-## Legacy local adapter
+`GET /api/session` returns only the application `Session`. Protected routes recheck current membership, with additional role checks for each operation. Neither user-editable metadata nor browser-supplied claims confer privileges. Supabase account creation alone grants no app access. A removed or disabled member is denied on subsequent API calls and receives a revocation signal if connected. Each live stream also reconnects within four minutes to verify the managed session again.
 
-Authentication is owned by `apps/api`. The workspace and public portal do not receive Google credentials, database credentials, or a role claim that they can choose themselves. The API loads the approved leader record and issues an opaque, random session cookie.
+`POST /api/auth/logout` revokes the current Supabase session and clears its cookies. State-changing browser calls require an allowed `Origin`. No bearer token is stored in browser localStorage or sent by the application client. Neither frontend includes an identity SDK or Supabase credentials. First-party API rewrites are required for OAuth cookie consistency, including on mobile.
 
-## Google sign-in
+Callback failures return to `/login?auth_error=cancelled|expired|denied|unavailable`; the UI maps these fixed codes to useful retry/access messages without reflecting provider error text.
 
-Register a Google OAuth web application and configure its authorized redirect URI to match `GOOGLE_REDIRECT_URI`. The default callback is `http://localhost:3001/api/auth/google/callback` for local development. Set these variables in the API process:
-
-| Variable               | Purpose                                                                             |
-| ---------------------- | ----------------------------------------------------------------------------------- |
-| `GOOGLE_CLIENT_ID`     | OAuth web client ID                                                                 |
-| `GOOGLE_CLIENT_SECRET` | OAuth web client secret; API only                                                   |
-| `GOOGLE_REDIRECT_URI`  | Optional exact callback URI registered with Google                                  |
-| `API_URL`              | Optional API origin used to construct the default callback                          |
-| `WORKSPACE_URL`        | Optional destination after successful sign-in; defaults to `http://localhost:5173`  |
-| `NODE_ENV`             | Set to `production` in production to enable secure cookies and disable demo sign-in |
-
-The browser navigates to `GET /api/auth/google`. The API starts an authorization-code flow with PKCE and a one-use, expiring state value. The callback exchanges the code server-side, checks Google's verified-email result, and looks up that normalized email in the approved leader repository. It creates a session only when that record exists and remains approved. Disallowed accounts receive an explanatory 403 response and no session.
-
-If OAuth credentials are missing, the Google routes return 503 with a configuration message. Configure the client secret only in the API runtime; never place it in Vite variables or browser code.
-
-## Session and demo routes
-
-- `GET /api/session` returns `{ "user": Leader | null, "demo": boolean }`. When no user is signed in, `demo` reports whether demo sign-in is available; after sign-in, it reports whether that session uses demo mode.
-- `POST /api/auth/logout` revokes the current session and clears its cookie.
-- `POST /api/auth/demo` accepts `{ "department": Department }` and signs in as the approved seeded leader for that department.
-
-Demo sign-in works only when `DEMO_MODE=true` and `NODE_ENV` is not `production`. Its response sets `demo: true`, so the interface can display a clear demo label. Production always rejects this route, even if `DEMO_MODE` was accidentally enabled.
-
-The `moc_session` cookie is HttpOnly, SameSite=Lax, scoped to `/`, and Secure in production. Its random 256-bit identifier maps to an API-side session that expires after eight hours. Session and OAuth state storage are currently in memory, so restarting the API signs users out and invalidates in-progress Google sign-ins. Use a durable session store before running multiple API instances or relying on sessions across restarts.
+For local isolated demos only, with no Supabase URL/database configured, `DEMO_MODE=true` enables `POST /api/auth/demo` with a department. Its opaque HttpOnly `moc_session` cookie expires after eight hours and is held in process memory. It is never used by the Supabase runtime and is always disabled in production. Local demo mode does not implement Google OAuth.

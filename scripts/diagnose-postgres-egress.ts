@@ -1,15 +1,16 @@
 import "../apps/api/src/load-env";
 import { Client } from "pg";
+import { databaseConnectionOptions } from "../apps/api/src/database-config";
 
 // Read-only, aggregate metadata only. Never prints database credentials, member
 // records, comments or SQL text, and never resets the diagnostic counters.
+const databaseUrl = process.env.SUPABASE_DATABASE_URL_DIRECT || process.env.SUPABASE_DATABASE_URL;
+if (!databaseUrl) throw new Error("Set SUPABASE_DATABASE_URL before running this diagnostic.");
 const client = new Client({
-  connectionString: process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL,
+  ...databaseConnectionOptions(databaseUrl),
   connectionTimeoutMillis: 10_000,
   application_name: "moc-egress-diagnostic",
 });
-if (!process.env.DATABASE_URL_UNPOOLED && !process.env.DATABASE_URL)
-  throw new Error("Pull the existing Neon environment before running this diagnostic.");
 
 try {
   await client.connect();
@@ -32,8 +33,8 @@ try {
         WHEN query ~* 'SELECT.*catalog.*FROM moc.workspace_state' AND query ~* 'jsonb_array_elements' THEN 'projected member lookup'
         WHEN query ~* 'SELECT.*catalog.*FROM moc.workspace_state' THEN 'projected catalog read'
         WHEN query ~* 'workspace_members' THEN 'membership / priority live query'
-        WHEN query ~* 'neon_auth' THEN 'managed Auth'
-        ELSE 'other (inspect queryid in Neon SQL editor)'
+        WHEN query ~* 'auth[.]' THEN 'managed Auth'
+        ELSE 'other (inspect queryid in Supabase SQL editor)'
       END AS category
       FROM public.pg_stat_statements WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
       AND calls > 0 ORDER BY calls DESC LIMIT 30`);
@@ -47,7 +48,7 @@ try {
 } catch (error) {
   const message = error instanceof Error ? error.message : "Diagnostic failed";
   console.error(/quota/i.test(message)
-    ? "Neon quota is still blocking SQL. Restore access before measuring query sources."
+    ? "Database access is blocked. Restore access before measuring query sources."
     : "Could not read diagnostic metadata. Check database availability and pg_stat_statements permissions.");
   process.exitCode = 1;
 } finally {

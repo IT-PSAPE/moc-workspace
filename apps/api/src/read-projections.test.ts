@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { createSeedState } from "@moc/shared";
-import type { SealedLiveQuery } from "@neon/realtime/client";
-import type { WorkspaceRevision } from "./realtime";
 import { createApiApp } from "./index";
 import type { Repository } from "./repository";
 
@@ -18,7 +16,7 @@ function harness() {
   };
   const app = createApiApp(repository, {
     resolveSession: async () => ({ user: member, demo: false }),
-    sealWorkspace: async () => ({ capability: "test-capability" }) as unknown as SealedLiveQuery<WorkspaceRevision>,
+    workspaceEvents: async (c) => c.text("event: revision\ndata: {}\n\n"),
   });
   return { app, repository, member, state };
 }
@@ -33,10 +31,10 @@ describe("API read projections", () => {
     expect(repository.findApprovedLeaderById).not.toHaveBeenCalled();
   });
 
-  it.each(["/api/session", "/api/integrations", "/api/workspace/live"])("uses current membership for %s without loading all tasks and requests", async (path) => {
+  it.each(["/api/session", "/api/integrations", "/api/workspace/events"])("uses current membership for %s without loading all tasks and requests", async (path) => {
     const { app, repository, member } = harness();
     const response = await app.request(path, {
-      method: path.endsWith("/live") ? "POST" : "GET",
+      method: "GET",
       headers: { origin: "http://localhost:5173" },
     });
     expect(response.status).toBe(200);
@@ -51,7 +49,7 @@ describe("API read projections", () => {
     vi.mocked(repository.findApprovedLeaderById).mockResolvedValue(null);
     expect(await (await app.request("/api/session")).json()).toEqual({ user: null, demo: false });
     expect((await app.request("/api/integrations")).status).toBe(401);
-    expect((await app.request("/api/workspace/live", { method: "POST", headers: { origin: "http://localhost:5173" } })).status).toBe(401);
+    expect((await app.request("/api/workspace/events", { method: "GET", headers: { origin: "http://localhost:5173" } })).status).toBe(401);
     expect(repository.read).not.toHaveBeenCalled();
   });
 });

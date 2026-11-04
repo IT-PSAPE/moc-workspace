@@ -24,8 +24,6 @@ import { createAuthRouter, getSession } from "./auth";
 import { JsonRepository, type Repository } from "./repository";
 import type { ReportStorage } from "./report-storage";
 import { HTTPException } from "hono/http-exception";
-import type { SealedLiveQuery } from "@neon/realtime/client";
-import type { WorkspaceRevision } from "./realtime";
 import {
   createTrackingCode,
   findRequestByTrackingCode,
@@ -55,8 +53,9 @@ export interface ApiOptions {
   quoteRandom?: () => number;
   resolveSession?: (context: Context) => Promise<Session>;
   reportStorage?: ReportStorage;
-  storage?: "local-demo" | "neon-postgres";
-  sealWorkspace?: (memberId: string) => Promise<SealedLiveQuery<WorkspaceRevision>>;
+  storage?: "local-demo" | "supabase-postgres";
+  authRouter?: Hono;
+  workspaceEvents?: (context: Context, memberId: string) => Promise<Response>;
   /** Override only for an adapter that supplies a verified transport identity. */
   resolveRemoteAddress?: (context: Context) => string | undefined;
   maxCredentialBuckets?: number;
@@ -102,6 +101,10 @@ export function createApiApp(
     }
     await next();
   };
+  app.use("/api/*", async (c, next) => {
+    c.header("Cache-Control", "private, no-store");
+    await next();
+  });
   app.use("/api/*", bodyLimit);
 
   const credentialAttempts = new Map<string, number[]>();
@@ -171,9 +174,7 @@ export function createApiApp(
   });
   app.route(
     "/api/auth",
-    createAuthRouter({
-      findApprovedLeaderByGoogleEmail: (email) =>
-        repository.findApprovedLeaderByGoogleEmail(email),
+    options.authRouter ?? createAuthRouter({
       getDemoLeaderByDepartment: (department) =>
         options.resolveSession ? null : repository.getDemoLeaderByDepartment(department),
     }),
@@ -207,10 +208,10 @@ export function createApiApp(
         process.env.TELEGRAM_BOT_TOKEN && telegramChats.every((chat) => chat),
       ),
       googleConfigured: Boolean(
-        process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET,
+        options.authRouter,
       ),
       storage: options.storage ?? "local-demo",
-      ...(options.resolveSession ? { neonAuthConfigured: true } : {}),
+      ...(options.resolveSession ? { supabaseAuthConfigured: true } : {}),
       ...(options.reportStorage ? { objectStorageConfigured: true } : {}),
     });
   });
@@ -229,12 +230,30 @@ export function createApiApp(
     return c.json(await options.reportStorage.save(actor.id, body.month, body.csv), 201);
   });
 
-  app.post("/api/workspace/live", async (c) => {
+  app.get("/api/reports/:id/download", async (c) => {
+    const session = await resolveSession(c);
+    if (!isApproved(session)) return unauthorized(c);
+    const actor = await repository.findApprovedLeaderById(session.user.id);
+    if (!actor) return unauthorized(c);
+    if (!actor.isLeader || actor.department !== "cell-0")
+      return c.json({ error: "Only Cell 0 leaders can download reports." }, 403);
+    if (!options.reportStorage) return c.json({ error: "Report storage is not configured." }, 503);
+    const id = c.req.param("id");
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))
+      return c.json({ error: "Report not found." }, 404);
+    const report = await options.reportStorage.download(id);
+    if (!report) return c.json({ error: "Report not found." }, 404);
+    c.header("Content-Type", "text/csv; charset=utf-8");
+    c.header("Content-Disposition", `attachment; filename="${report.filename.replace(/[^a-zA-Z0-9._-]/g, "_")}"`);
+    return c.body(await report.data.arrayBuffer());
+  });
+
+  app.get("/api/workspace/events", async (c) => {
     const session = await resolveSession(c);
     if (!isApproved(session)) return unauthorized(c);
     if (!await repository.findApprovedLeaderById(session.user.id)) return unauthorized(c);
-    if (!options.sealWorkspace) return c.json({ error: "Live updates are not configured." }, 503);
-    return c.json(await options.sealWorkspace(session.user.id));
+    if (!options.workspaceEvents) return c.json({ error: "Live updates are not configured." }, 503);
+    return options.workspaceEvents(c, session.user.id);
   });
 
   app.get("/api/workspace", async (c) => {

@@ -1,4 +1,6 @@
-# Neon backend
+# Neon backend (historical)
+
+This document records the previous backend and transfer investigation. Its Neon deployment/setup commands are superseded by [SUPABASE.md](SUPABASE.md). The Supabase conversion is prepared in code; production remains on the last Neon release until credentials, data transfer and a coordinated deployment are completed.
 
 The app is linked to project `green-waterfall-60958039` (MoC CPT), organization
 `org-lively-smoke-74296440`, production branch `br-noisy-rain-b9aix0sd`,

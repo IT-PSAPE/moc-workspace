@@ -19,9 +19,10 @@ export async function startUiTestApi(origins) {
         NODE_ENV: "development",
         PORT: "0",
         DEMO_MODE: "true",
-        // Keep root Neon environment files from connecting test fixtures to production.
-        DATABASE_URL: "",
-        DATABASE_URL_UNPOOLED: "",
+        // Keep root Supabase environment files from connecting test fixtures to production.
+        SUPABASE_DATABASE_URL: "",
+        SUPABASE_URL: "",
+        SUPABASE_DATABASE_URL_DIRECT: "",
         API_LOCAL_DATA_PATH: path.join(directory, "state.json"),
         API_ALLOWED_ORIGINS: origins.join(","),
         TELEGRAM_BOT_TOKEN: "",
@@ -76,7 +77,7 @@ export async function startUiTestApi(origins) {
 }
 
 export async function routeUiTestApi(context, clientApiUrl, testApiUrl) {
-  await context.route(`${clientApiUrl}/api/**`, async (route) => {
+  await context.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     const response = await route.fetch({
       url: `${testApiUrl}${url.pathname}${url.search}`,

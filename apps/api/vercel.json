@@ -2,5 +2,12 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "hono",
   "installCommand": "npm ci",
-  "regions": ["fra1"]
+  "regions": [
+    "fra1"
+  ],
+  "functions": {
+    "app.js": {
+      "maxDuration": 300
+    }
+  }
 }

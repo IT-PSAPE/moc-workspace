@@ -2,18 +2,31 @@ import "../apps/api/src/load-env";
 import { readFile, readdir } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { Client, Pool } from "pg";
+import { databaseConnectionOptions } from "../apps/api/src/database-config";
 import { PostgresRepository } from "../apps/api/src/postgres-repository";
 
-const direct = process.env.DATABASE_URL_UNPOOLED;
-if (!direct) throw new Error("Pull Neon environment variables before running migrations.");
-const client = new Client({ connectionString: direct, connectionTimeoutMillis: 10_000 });
+const direct = process.env.SUPABASE_DATABASE_URL_DIRECT || process.env.SUPABASE_DATABASE_URL;
+if (!direct) throw new Error("Set SUPABASE_DATABASE_URL_DIRECT (or SUPABASE_DATABASE_URL) before running migrations.");
+const client = new Client({ ...databaseConnectionOptions(direct), connectionTimeoutMillis: 10_000 });
 await client.connect();
 try {
   await client.query("BEGIN");
-  const directory = new URL("../apps/api/migrations/", import.meta.url);
+  const directory = new URL("../supabase/migrations/", import.meta.url);
+  await client.query("CREATE SCHEMA IF NOT EXISTS moc");
+  await client.query("CREATE TABLE IF NOT EXISTS moc.schema_migrations (name text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())");
   for (const file of (await readdir(directory)).filter((file) => file.endsWith(".sql")).sort()) {
-    await client.query(await readFile(new URL(file, directory), "utf8"));
+    const sql = await readFile(new URL(file, directory), "utf8");
+    const checksum = createHash("sha256").update(sql).digest("hex");
+    const existing = await client.query("SELECT checksum FROM moc.schema_migrations WHERE name = $1", [file]);
+    if (existing.rows[0]) {
+      if (existing.rows[0].checksum !== checksum) throw new Error(`Applied migration changed: ${file}`);
+      continue;
+    }
+    await client.query(sql);
+    await client.query("INSERT INTO moc.schema_migrations (name, checksum) VALUES ($1, $2)", [file, checksum]);
   }
+  await client.query("ALTER TABLE moc.schema_migrations ENABLE ROW LEVEL SECURITY");
+  await client.query("REVOKE ALL ON moc.schema_migrations FROM PUBLIC");
   await client.query("COMMIT");
   console.log("PASS Postgres migrations: workspace state, report exports, live membership and priority signals");
 } catch (error) {
@@ -22,7 +35,7 @@ try {
 } finally {
   await client.end();
 }
-const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
+const pool = new Pool({ ...databaseConnectionOptions(process.env.SUPABASE_DATABASE_URL || direct), max: 2 });
 try {
   const repository = new PostgresRepository(pool);
   await repository.initialize();

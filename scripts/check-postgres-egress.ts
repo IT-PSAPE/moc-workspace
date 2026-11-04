@@ -8,7 +8,7 @@ import { ensurePriorityLiveSchema } from "../apps/api/src/priority-live-schema";
 import { workspaceLiveSql } from "../apps/api/src/realtime";
 
 // An isolated local database measures actual PostgreSQL response bytes. It never
-// uses DATABASE_URL or the production Neon project. Requires local Postgres tools.
+// uses an environment database URL or the production project. Requires local Postgres tools.
 const directory = await mkdtemp("/tmp/moc-egress-");
 const dataDirectory = `${directory}/data`;
 let started = false;
@@ -23,9 +23,18 @@ try {
     const connection = client as unknown as { connection: { stream: NodeJS.ReadableStream } };
     connection.connection.stream.on("data", (chunk: Buffer) => { receivedBytes += chunk.length; });
   });
-  const migrationDirectory = new URL("../apps/api/migrations/", import.meta.url);
+  await pool.query("CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS; CREATE PUBLICATION supabase_realtime");
+  const migrationDirectory = new URL("../supabase/migrations/", import.meta.url);
   for (const file of (await readdir(migrationDirectory)).filter((file) => file.endsWith(".sql")).sort())
     await pool.query(await readFile(new URL(file, migrationDirectory), "utf8"));
+  const security = (await pool.query(`SELECT
+    has_schema_privilege('anon', 'moc', 'USAGE') AS anon_schema,
+    has_schema_privilege('authenticated', 'moc', 'USAGE') AS browser_schema,
+    has_table_privilege('service_role', 'moc.workspace_members', 'SELECT') AS service_counters,
+    has_table_privilege('service_role', 'moc.workspace_state', 'SELECT') AS service_state,
+    (SELECT bool_and(relrowsecurity) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'moc' AND c.relkind = 'r') AS all_rls`)).rows[0];
+  assert.deepEqual(security, { anon_schema: false, browser_schema: false, service_counters: true, service_state: false, all_rls: true });
+  assert.deepEqual((await pool.query("SELECT tablename FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND schemaname = 'moc'")).rows, [{ tablename: "workspace_members" }]);
   // Simulate the currently deployed 001/002 schema and its preserved members.
   await pool.query("ALTER TABLE moc.workspace_members DROP COLUMN live_revision");
   await pool.query("INSERT INTO moc.workspace_state (id, payload) VALUES ('bootstrap-check', '{}'::jsonb)");
@@ -46,8 +55,8 @@ try {
     return result;
   }
   const diagnosticUrl = `postgresql://moc_test@localhost/postgres?host=${encodeURIComponent(directory)}`;
-  const diagnostic = JSON.parse(execFileSync("node_modules/.bin/tsx", ["scripts/diagnose-neon-egress.ts"], {
-    env: { ...process.env, DATABASE_URL: diagnosticUrl, DATABASE_URL_UNPOOLED: diagnosticUrl }, encoding: "utf8",
+  const diagnostic = JSON.parse(execFileSync("node_modules/.bin/tsx", ["scripts/diagnose-postgres-egress.ts"], {
+    env: { ...process.env, SUPABASE_DATABASE_URL: diagnosticUrl, SUPABASE_DATABASE_URL_DIRECT: diagnosticUrl }, encoding: "utf8",
   }));
   assert.equal(diagnostic.sizes[0]?.tasks, state.tasks.length);
   assert.equal(diagnostic.statisticsAvailable, false, "fresh local PG intentionally has no statement extension");
@@ -102,12 +111,25 @@ try {
   const normalized = (await repository.read()).users.find((user) => user.id === member.id);
   assert.deepEqual(await repository.findApprovedLeaderById(member.id), normalized, "projected reads retain legacy duty and group migration");
 
+  // Exercise the real setup script twice against an empty disposable database.
+  await pool.query("CREATE DATABASE moc_setup_target");
+  const targetUrl = `postgresql://moc_test@localhost/moc_setup_target?host=${encodeURIComponent(directory)}`;
+  const setupEnvironment = { ...process.env, NODE_ENV: "development", SUPABASE_DATABASE_URL: targetUrl, SUPABASE_DATABASE_URL_DIRECT: targetUrl };
+  for (let attempt = 0; attempt < 2; attempt++)
+    execFileSync("node_modules/.bin/tsx", ["scripts/supabase-db.ts"], { env: setupEnvironment, stdio: "pipe" });
+  const destinationPool = new Pool({ connectionString: targetUrl, max: 1 });
+  try {
+    const fresh = await new PostgresRepository(destinationPool).read();
+    for (const collection of ["users", "tasks", "requests", "activities", "notifications"] as const)
+      assert.deepEqual(fresh[collection], [], "fresh setup contains no old or demo records");
+  } finally { await destinationPool.end(); }
+
   const result = {
     fixture: "createSeedState; isolated local PostgreSQL; incoming wire bytes per read",
     measurements,
     catalogReductionPercent: Math.round(100 * (1 - measurements.catalog! / measurements.fullWorkspace!)),
     memberLookupReductionPercent: Math.round(100 * (1 - measurements.memberByEmail! / measurements.fullWorkspace!)),
-    checks: ["projection shapes", "parameterized member lookup", "immediate revocation", "membership write suppression", "legacy normalization", "priority-only live SQL", "private comment audience", "atomic signal rollback", "read-only metadata diagnostic", "deferred schema upgrade preserves members"],
+    checks: ["projection shapes", "parameterized member lookup", "immediate revocation", "membership write suppression", "legacy normalization", "priority-only live SQL", "private comment audience", "atomic signal rollback", "read-only metadata diagnostic", "deferred schema upgrade preserves members", "private Supabase schema and publication", "idempotent migration scripts", "fresh workspace without imported or demo records"],
   };
   await mkdir("output/playwright/egress", { recursive: true });
   await writeFile("output/playwright/egress/postgres-verification.json", JSON.stringify(result, null, 2) + "\n");

@@ -2,14 +2,15 @@ import "../apps/api/src/load-env";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
+import { databaseConnectionOptions } from "../apps/api/src/database-config";
 import { createSeedState, currentBannerQuote, type WorkspaceState, type WorkspaceAction } from "@moc/shared";
 import { createApiApp } from "../apps/api/src/index";
 import { PostgresRepository } from "../apps/api/src/postgres-repository";
 
-// Exercise actual Neon persistence in a unique aggregate, leaving workspace data alone.
-assert(process.env.DATABASE_URL, "DATABASE_URL is required for this integration check.");
+// Exercise actual Supabase Postgres persistence in a unique aggregate, leaving workspace data alone.
+assert(process.env.SUPABASE_DATABASE_URL, "SUPABASE_DATABASE_URL is required for this integration check.");
 const workspaceId = `quote-check-${randomUUID()}`;
-const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 5, connectionTimeoutMillis: 10_000 });
+const pool = new Pool({ ...databaseConnectionOptions(process.env.SUPABASE_DATABASE_URL!), max: 5, connectionTimeoutMillis: 10_000 });
 const repository = new PostgresRepository(pool, workspaceId);
 let clock = new Date("2026-10-24T21:59:59Z");
 let picks = 0;
@@ -45,7 +46,7 @@ try {
   assert.equal(picks, 1);
   assert(results.every((state) => currentBannerQuote(state.bannerQuotes)?.id === "quote-first"));
   assert.equal(results[1].bannerQuotes!.quotes.length, 0);
-  console.log("PASS Neon: eight concurrent reads across two API instances share one persisted pick; members receive the banner without the management library");
+  console.log("PASS Supabase Postgres: eight concurrent reads across two API instances share one persisted pick; members receive the banner without the management library");
   await action({ type: "set-banner-quote-today", quoteId: "quote-second" });
   assert.equal(currentBannerQuote((await workspace(secondApp, "member")).bannerQuotes)?.id, "quote-second");
   await action({ type: "save-banner-quote", quote: { id: "quote-second", text: "Edited for future picks", author: "Quote check" } });
@@ -55,7 +56,7 @@ try {
   await action({ type: "set-banner-quote-today", quoteId: "quote-second" });
   const stored = await new PostgresRepository(pool, workspaceId).read();
   assert.equal(currentBannerQuote(stored.bannerQuotes)?.text, "Edited for future picks");
-  console.log("PASS Neon: create/edit persistence, shared override, stable snapshots and restoration through a fresh repository instance");
+  console.log("PASS Supabase Postgres: create/edit persistence, shared override, stable snapshots and restoration through a fresh repository instance");
   clock = new Date("2026-10-24T22:00:00Z");
   const next = await workspace(secondApp, "member");
   assert.equal(next.bannerQuotes?.daily?.date, "2026-10-25");
@@ -66,7 +67,7 @@ try {
   assert.equal(currentBannerQuote((await workspace()).bannerQuotes)?.id, "quote-first");
   clock = new Date("2026-10-25T22:00:00Z");
   assert.equal(currentBannerQuote((await workspace()).bannerQuotes), null);
-  console.log("PASS Neon: Johannesburg midnight clears the override, bulk deletion persists, and an empty library hides the following day's banner");
+  console.log("PASS Supabase Postgres: Johannesburg midnight clears the override, bulk deletion persists, and an empty library hides the following day's banner");
 } finally {
   await pool.query("DELETE FROM moc.workspace_state WHERE id = $1", [workspaceId]);
   await pool.end();

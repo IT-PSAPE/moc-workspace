@@ -482,3 +482,106 @@ Evidence: `output/reviews/release-2026-11-04/{production-deployments,aliases,
 live-checks,api-source-checks,browser-checks,runtime-log-check}.json` and production
 screenshots. The release used the existing CLI login, made no billing changes,
 and retained deployment protection on staged URLs.
+
+
+## Supabase conversion, 2026-11-04 (prepared, not deployed)
+
+Reviewed scope: migration from Neon to Supabase Postgres/Auth/Storage, Google
+OAuth through same-origin API routes, server-side Realtime with an authenticated
+API event stream, environment and fresh-workspace setup tooling. Preserve existing styling,
+15-minute refresh, targeted request/comment signals and optimistic saves.
+
+- `npm test`: 196 tests / 20 files passed. New coverage includes real Supabase
+  SSR SDK PKCE cookie generation, code exchange, managed user validation,
+  confirmed Google identity checks, metadata/forged-claim rejection, callback
+  failure messages, current approval, logout origin checks, cookie restore and
+  refresh across fresh API instances; private report metadata/upload cleanup and
+  authorized downloads; stream audience, revocation, cleanup, heartbeat without
+  DB polling, reconnect deduplication, permanent failures and error-body cleanup.
+- `npm run typecheck` and `npm run build`: all workspaces passed. Existing
+  workspace chunk-size warning remains. Production bundles contain no Neon or
+  Supabase SDK/provider URLs/keys; production API origin is always same-origin.
+- `npm run verify:postgres-egress`: passed in disposable local Postgres. The
+  migration enables private schema/RLS, denies browser roles, publishes only
+  membership counters, and grants only those counters to the service role.
+  Migration runner passes twice and initializes an empty workspace without demo
+  users, tasks, requests, activity or notifications. Existing data is preserved. Real response bytes remain 23,887 for the
+  aggregate, 3,089 catalog and 3,302 member projection. These are fixture
+  measurements, not production billing estimates.
+- `npm run verify:supabase`: passed in real Chrome at 1440px and 390px with real
+  local Postgres, the actual SDK/API and a local Auth/Storage HTTP fixture. The
+  fixture checks the PKCE challenge; browser verifies first-party HttpOnly
+  cookies, no tokens in browser storage, reload, private CSV bytes through the
+  API, logout, denied Google account, no horizontal overflow, no page errors,
+  and no direct provider fetches from the browser. External Google/Supabase
+  services are mocked; this does not claim hosted acceptance.
+- `npm run verify:query-traffic`: passed. Actual client SSE parser with only the
+  external API stream transport mocked; real isolated API for reads/writes.
+  Priority requests/comments, compact acknowledgements, pending-save visibility,
+  rollback/draft retry, deferred/coalesced invalidation, 15-minute ordinary and
+  catalog refresh, 20 hidden minutes without requests, foreground return,
+  midnight banner and revocation pass on desktop/mobile.
+- `verify:ui` (Chrome, disposable API): full public submission → private tracking
+  → edit → approval → task completion → public tracking passed at 1440px/390px,
+  including filters, calendar, CSV and invitations; role gates passed. The first
+  run exposed an unread failed SSE response body keeping a browser connection
+  open. Explicit body cancellation fixes it; the unchanged flow passes after
+  that fix and a regression test protects it.
+- `verify:internal-tasks`: creation/reload, cross-department and member denials,
+  sign-in approval/leader distinction and invitation guidance passed at 1440px,
+  834px, 390px and 320px. `git diff --check` passed.
+
+Separate code and interface self-review: PASS for this locally inspected scope.
+Independent agent review was not authorized/available. Interface authority is the
+existing MOC design in DESIGN.md; no redesign is requested. Inspected authenticated
+workspace and denied-account login screenshots at desktop/mobile: hierarchy,
+Google CTA, access guidance, inline error, spacing and reflow remain coherent.
+Private report download and sign-in behavior pass the browser contract check.
+Evidence: `output/playwright/supabase/`, `output/playwright/supabase-flows/`,
+`output/playwright/supabase-internal/`, `output/playwright/egress/` and
+`output/reviews/supabase-migration/` (ignored local artifacts).
+
+Supabase packages are pinned, and the obsolete Neon SDK/config dependencies are
+removed. `npm audit` reports two remaining moderate advisories in existing Hono
+node-server/seroval dependencies; no high/critical advisories. No forced unrelated
+dependency update was made.
+
+## Hosted Supabase setup, 4 November 2026
+
+The owner chose a fresh start and authorized the Google OAuth configuration.
+The old Neon data-copy command, source environment slots and AWS dependency
+were removed. Versioned SQL schema migrations remain required.
+
+Hosted checks against `dnuoxygrbgpkjkzvpmqw` passed:
+
+- Applied the private schema and initial approved Cell 0 administrator for
+  `psape.dev@gmail.com`; private `moc-reports` bucket verified. The only Realtime
+  publication table is the small membership projection. Security advisor has no
+  warnings after revoking browser execution of the default RLS trigger function;
+  its RLS-without-policy information is intentional for this private API schema.
+- Direct and transaction pooler connections verify TLS certificates and hostname.
+  The API uses the observed shared transaction pooler on port 6543. A bundled
+  official Supabase public root CA fixes Node's missing trust-chain failure.
+- Real Google account selection and consent returned the administrator to the
+  local workspace on the first attempt. Reload restored the session.
+- Real public portal submission, comment saving, approval and task creation
+  persisted in hosted Postgres. A private CSV was uploaded and downloaded from
+  Supabase Storage with the expected content (948 bytes for the disposable test).
+- Actual hosted Supabase Realtime counter changes reached the API's authenticated
+  SSE handler. Initial and changed revisions plus no-store behavior passed;
+  the browser also showed the new request without a manual reload.
+- Production Vercel environment variables have been configured for all three
+  existing projects; no billing plan or old Neon resources were changed.
+
+Google provider settings were saved through the authenticated owner dashboard;
+the existing CLI token can read project configuration but cannot update Auth.
+Site URL is the production workspace origin, with exact localhost and production
+`/api/auth/callback` allowlist entries. Google is in Testing while owner approval
+of drafted public app/privacy/terms pages is pending. Production deployment and
+public-alias acceptance are recorded separately once completed.
+
+Separate code self-review of the TLS helper, migration safety and provider setup:
+PASS. Certificate verification remains enabled; secrets are excluded from source
+and frontend bundles. The fresh database initializer preserves existing records.
+No independent reviewer was delegated. Evidence: ignored
+`output/reviews/supabase-live-setup/` artifacts and screenshots.

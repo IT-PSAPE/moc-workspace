@@ -452,3 +452,33 @@ an existing approved member, and proves its counter initializes to zero before
 normal priority writes. Self-review of this recovery change: PASS; no independent
 reviewer was used. Full production DB/Auth/Realtime verification remains quota
 blocked. Deployment status is recorded separately after production promotion.
+
+## Verified production promotion — 4 November 2026
+
+Release `b757eab` is pushed to main and deployed/promoted on all three Vercel
+projects. Exact deployment IDs and scope are recorded in `docs/VERCEL.md`.
+Production target metadata and direct alias lookups match the release commit.
+Downloaded frontend bundles prove the new traffic policy and optimistic-save
+path reached the public URLs; retrieved API source matches the release's action
+handler, priority query and deferred migration helper. Desktop workspace login
+and 390px portal rendering pass without page exceptions or overflow.
+
+A bounded error scan of the new API deployment found quota failures on catalog
+requests; health and anonymous session requests pass. API-root 404s are expected
+because the health route is `/health`. Managed sign-in, saves, report exports,
+the production schema change and actual live delivery remain unverified while
+Neon blocks SQL. No real user records were modified during this release check.
+
+Dependency audit reports 11 advisories (8 low, 2 moderate, 1 critical) in the
+unchanged dependency lockfile. The critical Better Auth findings concern hosted
+OAuth/Magic Link/Proxy server handlers: this Vercel API does not depend on or
+host Better Auth server handlers (`npm ls better-auth -w @moc/api --omit=dev`
+returns no dependency). Browser clients use Neon-managed Auth; the managed
+service's deployed version was not assessed. The Hono advisory concerns
+`serveStatic`, which this app does not use. Remaining dependency maintenance is
+not claimed resolved, and no breaking forced dependency upgrade was performed.
+
+Evidence: `output/reviews/release-2026-11-04/{production-deployments,aliases,
+live-checks,api-source-checks,browser-checks,runtime-log-check}.json` and production
+screenshots. The release used the existing CLI login, made no billing changes,
+and retained deployment protection on staged URLs.

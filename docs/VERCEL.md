@@ -113,3 +113,39 @@ by the owner. A scan of 352 historical tracked text blobs found no matches for
 the credential patterns checked. Publishing it resolved Vercel's initial Hobby
 plan commit-author access block. An initial Node ESM startup failure was resolved
 by the bundled runtime entrypoint. No Git authorship was changed.
+
+## Production release, 4 November 2026
+
+The user-authorized transfer optimization release is deployed and promoted on
+all three production aliases from clean source commit
+`b757eab9d56dc07b7bfbc64d5e2ab5304d4c03d7`:
+
+| Project | Ready production deployment |
+| --- | --- |
+| API | `dpl_6ktq8epQunNJ1G6hbzSdjoQaSK1W` |
+| Workspace | `dpl_HMMaehbokmBrypNiLVA5ZajShS4f` |
+| Portal | `dpl_6qUkhqMTfvgpgAyHCzgdCQ2vi1yq` |
+
+Alias records independently confirm that the public URLs above route to those
+IDs. The downloaded workspace bundle contains optimistic mutation handling,
+compact action requests, the fifteen-minute refresh policy and quota retry
+suppression. The public portal bundle contains the fifteen-minute policy. The
+old fifteen-second workspace and thirty-second catalog timers are absent.
+Retrieved API deployment source matches the released compact response handler,
+priority live SELECT and deferred schema helper exactly.
+
+Neon remains quota-blocked. Production health and anonymous sessions return 200;
+catalog access still returns quota exceeded. Login/data-backed saves and actual
+Realtime delivery cannot yet be verified against production. Migration 003 is
+not claimed applied: the API will safely apply this additive change before its
+first successful write or authenticated live capability after database access
+returns. See `priority-live-schema.ts` and its tests. A deployment is not a quota
+reset, and billing was not changed.
+
+Both public frontends render without page exceptions or horizontal overflow in
+the inspected desktop/390px browser checks. Refresh already-open tabs to load
+the new client. Sanitized deployment, alias, source, bundle and browser evidence
+is stored locally under `output/reviews/release-2026-11-04/`.
+
+Git integration remains disconnected; future pushes still require an explicit
+Vercel deployment until a deployment workflow is separately configured.

@@ -10,7 +10,9 @@ The public manifest is `deployments/vercel.json`.
 | API | `moc-workspace-api` | `apps/api` | https://moc-workspace-api.vercel.app |
 
 All projects include files outside their root directory so the npm workspaces
-and shared packages resolve. Both frontends use Vite with same-origin `/api` rewrites followed by SPA fallbacks.
+and shared packages resolve. Installation explicitly includes the workspace root
+so each app build has the shared TypeScript toolchain. Both frontends use Vite
+with same-origin `/api` rewrites followed by SPA fallbacks.
 The API uses Vercel's native Hono support and `apps/api/app.js`, runs in Frankfurt
 near the configured database, and attaches its shared Postgres pool to Vercel's function lifecycle.
 The build bundles the TypeScript runtime and shared workspace package before

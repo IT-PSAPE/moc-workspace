@@ -1,6 +1,6 @@
 # Supabase setup and cutover
 
-This revision replaces Neon with Supabase. The owner chose a fresh workspace without copying old Neon records. The hosted Supabase schema, private report bucket, Google provider, callback URLs and initial administrator have been configured and verified. Deploy the three apps together for the production cutover.
+This revision replaces Neon with Supabase. The owner chose a fresh workspace without copying old Neon records. The hosted Supabase schema, private report bucket, Google provider, callback URLs and initial administrator have been configured and verified. All three apps are deployed and promoted from commit `95bd31257be9a161480d3b54756152cacc0f2cb5`; see [Vercel deployment](VERCEL.md) for release IDs and remaining acceptance limits.
 
 ## Environment
 

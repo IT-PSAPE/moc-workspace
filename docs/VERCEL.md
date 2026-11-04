@@ -63,7 +63,7 @@ Do not run these from an app subdirectory: the remote Root Directory setting
 already selects that app. Git integration has not been connected; these are
 explicit CLI deployments of the current local source.
 
-Before deploying this conversion, complete [Supabase setup](SUPABASE.md). Production still runs the previous Neon release until that cutover. Deploy all three apps as a coordinated change, with a fresh workspace and a verified administrator. Old frontend bundles use incompatible Neon authentication.
+The Supabase cutover below is live. For a new environment, complete [Supabase setup](SUPABASE.md) and deploy all three apps as a coordinated change, with a fresh workspace and a verified administrator. Old Neon frontend bundles use incompatible authentication.
 
 ## Verify
 
@@ -76,6 +76,41 @@ npm run verify:query-traffic
 ```
 
 After deployment, verify Google login/reload/logout, approved and denied access, public request/tracking, compact optimistic saves, private CSV download and a new request/comment between two signed-in browsers. Check the workspace origin's `/api/session` and `/api/workspace/events`; `/health` alone does not verify the database or OAuth. Exact setup, callback URLs and environment variables are in [SUPABASE.md](SUPABASE.md).
+
+## Supabase production cutover, 4 November 2026
+
+All three public aliases are promoted to Ready deployments of commit
+`95bd31257be9a161480d3b54756152cacc0f2cb5`, pushed to `main`:
+
+| App | Deployment |
+| --- | --- |
+| API | `dpl_Da7bAZ8FUjvqhm7vu5ccxVPVdNTK` |
+| Workspace | `dpl_8pahDYkf9pfmupUZgWUFK1sVheJA` |
+| Portal | `dpl_Ao97C82QFrnFDwJjrcZVFVwPMc3N` |
+
+Deployment API metadata confirms the exact source commit; alias inspection
+matches the deployment IDs. Public pages, health, API session and the database
+catalog return 200. Actual Google sign-in through the public workspace callback
+succeeds, reload restores the session, logout returns to login, and a second
+sign-in succeeds without retry. The app preserves the 15-minute refresh policy,
+optimistic saves and targeted request/comment live signals.
+
+The fresh Supabase workspace has the approved administrator
+`psape.dev@gmail.com`. All disposable verification requests, tasks, comments,
+activity, notifications and report objects were removed after checks; no Neon
+data was copied. Existing Neon deployments/resources have not been deleted.
+
+Google remains in **Testing**, with that administrator registered as a test
+user. Owner approval of the drafted public About, Privacy and Terms pages is
+pending before publishing the Google OAuth app for the broader rollout. No
+new policy pages have been published. Browser attachment-download completion
+could not be observed in the in-app browser; private Storage contents and the
+API download authorization/bytes are verified by hosted and contract checks.
+
+The first staged portal build found that workspace-scoped installation omitted
+the root TypeScript toolchain. `npm ci --include-workspace-root` fixes this and
+all three builds pass. No failed deployment was promoted. Sanitized evidence is
+in `output/reviews/supabase-live-setup/`.
 
 ## Historical Neon deployments
 

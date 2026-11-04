@@ -585,3 +585,32 @@ PASS. Certificate verification remains enabled; secrets are excluded from source
 and frontend bundles. The fresh database initializer preserves existing records.
 No independent reviewer was delegated. Evidence: ignored
 `output/reviews/supabase-live-setup/` artifacts and screenshots.
+
+## Supabase public-alias acceptance, 4 November 2026
+
+Production cutover PASS for the observed scope. All three Ready deployments
+match source commit `95bd31257be9a161480d3b54756152cacc0f2cb5` and their public
+aliases. Health, anonymous session and real database catalog return 200.
+Actual Google sign-in at the production origin succeeds without retry; reload,
+logout and a second sign-in pass. Production auth cookies are HttpOnly, Secure
+and SameSite=Lax. The browser receives a 200 event-stream from the same-origin
+API. A persisted production comment uses an 877-byte `{ok, changes}` response.
+The observed browser data requests use `/api`, with no direct provider requests.
+Report export returns 201 and an API download path, with correct CSV bytes in
+private hosted Storage. Download completion is INCONCLUSIVE because the in-app
+browser does not expose the attachment-download event. The isolated real-Chrome
+contract check verifies the API's authorized download bytes separately.
+
+Only disposable setup fixtures were modified. Their task/request/comment,
+related activity/notifications and two CSV objects were removed, preserving the
+administrator and catalog. Production login screenshots show the fresh state.
+The in-app browser viewport override did not apply to the inspected tab, so
+these production screenshots establish desktop behavior only. Mobile layout
+coverage remains the separate 390px real-Chrome contract/UI runs, not a claim
+that the original physical phone/browser has been reproduced.
+
+Google OAuth remains in Testing pending owner approval to publish drafted
+public app/privacy/terms pages. This limits rollout acceptance; it does not block
+the tested administrator's sign-in. The draft preview remains local, unpublished.
+Evidence: `production-deployments.json`, `public-aliases.json`, hosted acceptance
+and cleanup records, and production screenshots under the ignored setup folder.

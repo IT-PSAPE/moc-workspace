@@ -609,8 +609,37 @@ these production screenshots establish desktop behavior only. Mobile layout
 coverage remains the separate 390px real-Chrome contract/UI runs, not a claim
 that the original physical phone/browser has been reproduced.
 
-Google OAuth remains in Testing pending owner approval to publish drafted
-public app/privacy/terms pages. This limits rollout acceptance; it does not block
-the tested administrator's sign-in. The draft preview remains local, unpublished.
+At the initial cutover, Google OAuth remained in Testing pending owner approval
+of the public app/privacy/terms pages. That limitation is resolved by the
+publication and verification below.
 Evidence: `production-deployments.json`, `public-aliases.json`, hosted acceptance
 and cleanup records, and production screenshots under the ignored setup folder.
+
+## Approved public pages and production Google OAuth, 4 November 2026
+
+PASS. The owner approved publication of the existing About, Privacy and Terms
+drafts. Their content is unchanged apart from removal of the draft banner.
+Workspace build/typecheck passes; relative navigation and public request/app
+links are correct. Separate code/interface self-review passes: semantic headings,
+readable desktop layout, keyboard focus treatment and narrow layout without
+horizontal overflow. CDP-scoped emulation was cleared after review. Independent
+agent review was not delegated for this static publication.
+
+Workspace release `38dee30da579a28ad375a47a05b9caa232ea4328` is deployed as
+`dpl_2eKuQAaKQygnANQvsgcqnteDiEdi` and promoted. Deployment metadata matches
+source and the public alias matches that deployment. All three pages and their
+stylesheet return 200 anonymously and match the committed content. Staged
+requests required the full deployment URL with `vercel curl`; the path plus
+`--deployment` form returned protection content in the API-linked checkout.
+Deployment Protection was left enabled.
+
+Google Branding saved the homepage/About, Privacy and Terms URLs. Audience now
+shows **In production**, External. A fresh production logout and Google sign-in
+succeeded without retry. Google's account chooser visibly links to the published
+privacy and terms pages. Workspace membership authorization is unchanged and no
+additional identity scopes or credentials were added. Public app and request
+origins remain the owner-specified workspace and portal domains.
+
+Evidence: `oauth-pages-deployment.json`, `oauth-pages-public-checks.json`,
+`google-public-policy-links.json`, `google-oauth-production.png` and public page
+review screenshots under `output/reviews/supabase-live-setup/`.

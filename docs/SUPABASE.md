@@ -37,7 +37,7 @@ The API uses `@supabase/ssr` with PKCE and HttpOnly, SameSite=Lax cookies (Secur
 
 A new Google user may be created in Supabase Auth, but receives no workspace access unless their email is already approved. Existing application member IDs and references stay intact; Neon Auth's user tables are not imported. Users sign in again after cutover.
 
-The Google Cloud project is `psacpt-moc-workspace`, with web client “MOC Workspace — Supabase” and basic email/profile/OpenID scopes. The configured Supabase project is `dnuoxygrbgpkjkzvpmqw` in Frankfurt. Google is currently in Testing, with `psape.dev@gmail.com` registered as a test user. Public app/privacy/terms information and publishing must be completed before treating this as a general member rollout. Credentials remain in ignored local configuration and Supabase Auth; they are not in the repository.
+The Google Cloud project is `psacpt-moc-workspace`, with web client “MOC Workspace — Supabase” and basic email/profile/OpenID scopes. The configured Supabase project is `dnuoxygrbgpkjkzvpmqw` in Frankfurt. Google OAuth is published **In production** for external users after owner approval. Public app information, privacy and terms are available at `/about.html`, `/privacy.html` and `/terms.html` on `https://moc-workspace.vercel.app`. Google links to those pages. Workspace access still requires an approved member record; the initial administrator is `psape.dev@gmail.com`. Credentials remain in ignored local configuration and Supabase Auth; they are not in the repository.
 
 ## Initialize the destination
 

@@ -100,10 +100,9 @@ The fresh Supabase workspace has the approved administrator
 activity, notifications and report objects were removed after checks; no Neon
 data was copied. Existing Neon deployments/resources have not been deleted.
 
-Google remains in **Testing**, with that administrator registered as a test
-user. Owner approval of the drafted public About, Privacy and Terms pages is
-pending before publishing the Google OAuth app for the broader rollout. No
-new policy pages have been published. Browser attachment-download completion
+Google OAuth was subsequently published **In production** with owner approval;
+the public About, Privacy and Terms pages are linked in its Branding settings.
+See the publication record below. Browser attachment-download completion
 could not be observed in the in-app browser; private Storage contents and the
 API download authorization/bytes are verified by hosted and contract checks.
 
@@ -111,6 +110,27 @@ The first staged portal build found that workspace-scoped installation omitted
 the root TypeScript toolchain. `npm ci --include-workspace-root` fixes this and
 all three builds pass. No failed deployment was promoted. Sanitized evidence is
 in `output/reviews/supabase-live-setup/`.
+
+## Public app information and Google publishing, 4 November 2026
+
+The owner approved the exact About, Privacy and Terms drafts for publication.
+Workspace deployment `dpl_2eKuQAaKQygnANQvsgcqnteDiEdi` from source commit
+`38dee30da579a28ad375a47a05b9caa232ea4328` is Ready and promoted. This static-page
+release does not change the API or portal, which retain the cutover IDs above.
+Staged and anonymous public HTTP checks match the committed page contents.
+
+- App: https://moc-workspace.vercel.app/
+- Requests: https://moc-workspace-portal.vercel.app/
+- Public app information / Google homepage: https://moc-workspace.vercel.app/about.html
+- Privacy: https://moc-workspace.vercel.app/privacy.html
+- Terms: https://moc-workspace.vercel.app/terms.html
+
+Google Branding saved all three public information URLs. The Audience screen
+shows **In production** and External; the test-user restriction has been removed.
+Only the existing basic OpenID/email/profile scopes are configured. Publishing
+OAuth does not approve application members; the API still checks membership.
+The privacy/terms text remains the owner-approved draft content, with only the
+unpublished-draft banner removed. No provider credentials were changed.
 
 ## Historical Neon deployments
 

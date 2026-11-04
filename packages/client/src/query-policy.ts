@@ -1,6 +1,6 @@
 import { millisecondsUntilNextQuoteDay } from "@moc/shared";
 
-export const WORKSPACE_FALLBACK_INTERVAL_MS = 5 * 60_000;
+export const WORKSPACE_FALLBACK_INTERVAL_MS = 15 * 60_000;
 export const PUBLIC_CATALOG_REFRESH_MS = 15 * 60_000;
 
 export function isPermanentRequestError(error: unknown): boolean {
@@ -16,7 +16,8 @@ export function retryQuery(failureCount: number, error: unknown): boolean {
   return failureCount < 1 && !isPermanentRequestError(error);
 }
 
-export function workspaceRefetchInterval(live: boolean, error: unknown, now = new Date()): number | false {
+export function workspaceRefetchInterval(error: unknown, now = new Date()): number | false {
   if (isPermanentRequestError(error)) return false;
-  return Math.min(live ? Infinity : WORKSPACE_FALLBACK_INTERVAL_MS, millisecondsUntilNextQuoteDay(now));
+  // Priority live updates do not cover statuses, assignments or settings.
+  return Math.min(WORKSPACE_FALLBACK_INTERVAL_MS, millisecondsUntilNextQuoteDay(now));
 }

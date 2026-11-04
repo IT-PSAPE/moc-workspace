@@ -1,6 +1,8 @@
 import type { Pool } from "pg";
 import { createSeedState, type Catalog, type Leader, type WorkspaceState } from "@moc/shared";
 import { parseCatalog, parseMember, parseState, type Repository } from "./repository";
+import { liveEventCheckpoint, priorityLiveRecipients } from "./live-events";
+import { ensurePriorityLiveSchema } from "./priority-live-schema";
 
 export function emptyWorkspace(): WorkspaceState {
   return { catalog: createSeedState().catalog, tasks: [], requests: [], users: [], activities: [], notifications: [] };
@@ -28,12 +30,15 @@ export class PostgresRepository implements Repository {
   }
 
   async update(mutator: (state: WorkspaceState) => WorkspaceState): Promise<WorkspaceState> {
+    await ensurePriorityLiveSchema(this.pool);
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
       const result = await client.query("SELECT payload FROM moc.workspace_state WHERE id = $1 FOR UPDATE", [this.workspaceId]);
       if (!result.rows[0]) throw new Error("Workspace is not initialized.");
-      const next = parseState(JSON.stringify(mutator(parseState(JSON.stringify(result.rows[0].payload)))));
+      const current = parseState(JSON.stringify(result.rows[0].payload));
+      const checkpoint = liveEventCheckpoint(current);
+      const next = parseState(JSON.stringify(mutator(current)));
       await client.query("UPDATE moc.workspace_state SET payload = $2::jsonb, updated_at = now(), revision = revision + 1 WHERE id = $1", [this.workspaceId, JSON.stringify(next)]);
       await client.query(`INSERT INTO moc.workspace_members AS existing (workspace_id, member_id, approved)
         SELECT $1, member->>'id', (member->>'approved')::boolean
@@ -41,6 +46,10 @@ export class PostgresRepository implements Repository {
         ON CONFLICT (workspace_id, member_id) DO UPDATE SET approved = EXCLUDED.approved
         WHERE existing.approved IS DISTINCT FROM EXCLUDED.approved`, [this.workspaceId, JSON.stringify(next.users)]);
       await client.query("DELETE FROM moc.workspace_members WHERE workspace_id = $1 AND NOT (member_id = ANY($2::text[]))", [this.workspaceId, next.users.map((user) => user.id)]);
+      const recipients = priorityLiveRecipients(checkpoint, next);
+      if (recipients.length)
+        await client.query(`UPDATE moc.workspace_members SET live_revision = live_revision + 1
+          WHERE workspace_id = $1 AND member_id = ANY($2::text[]) AND approved = true`, [this.workspaceId, recipients]);
       await client.query("COMMIT");
       return next;
     } catch (error) {

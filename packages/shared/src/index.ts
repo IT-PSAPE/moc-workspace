@@ -4,3 +4,5 @@ export * from "./seed";
 export * from "./domain";
 export * from "./reporting";
 export * from "./banner-quotes";
+export * from "./state-patch";
+export * from "./workspace-projection";

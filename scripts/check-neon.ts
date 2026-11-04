@@ -7,7 +7,7 @@ import { mkdir } from "node:fs/promises";
 import { Pool } from "pg";
 import { serve } from "@hono/node-server";
 import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
-import { bannerQuoteDate, createRequest, currentBannerQuote, type WorkspaceState } from "@moc/shared";
+import { applyAction, bannerQuoteDate, createRequest, currentBannerQuote, type WorkspaceState } from "@moc/shared";
 import { PostgresRepository, emptyWorkspace } from "../apps/api/src/postgres-repository";
 import { createApiApp } from "../apps/api/src/index";
 import { neonSessionResolver } from "../apps/api/src/neon-auth";
@@ -65,14 +65,35 @@ async function verifyRealtime(apiUrl: string, target: PostgresRepository, token:
     const remove = subscription.onChange(check);
     check(subscription.getSnapshot());
   });
+  let liveRequestId: string | undefined;
+  let activityIds: string[] = [];
+  let notificationIds: string[] = [];
   try {
     await waitForRevision((data) => data.length === 1);
     const before = subscription.getSnapshot().data![0].revision;
-    await target.update((current) => current);
+    await target.update((current) => {
+      const created = createRequest(current, {
+        ministry: current.catalog.ministries[0]!,
+        service: current.catalog.services.find((service) => !service.requiresAiredDates)!.id,
+        title: `${workspaceId} priority Realtime verification`, instructions: "Verify new-request delivery", notes: "Removed after verification",
+        dueAt: new Date(Date.now() + 7 * 86400000).toISOString(),
+      });
+      liveRequestId = created.request.id;
+      activityIds = created.state.activities.filter((item) => !current.activities.some((previous) => previous.id === item.id)).map((item) => item.id);
+      notificationIds = created.state.notifications.filter((item) => !current.notifications.some((previous) => previous.id === item.id)).map((item) => item.id);
+      return created.state;
+    });
     await waitForRevision((data) => data[0]?.revision !== before);
     await revoke();
     await waitForRevision((data) => data.length === 0);
-  } finally { subscription.unsubscribe(); realtimeClient.close(); }
+  } finally {
+    subscription.unsubscribe(); realtimeClient.close();
+    if (liveRequestId) await target.update((current) => ({
+      ...current, requests: current.requests.filter((request) => request.id !== liveRequestId),
+      activities: current.activities.filter((item) => !activityIds.includes(item.id)),
+      notifications: current.notifications.filter((item) => !notificationIds.includes(item.id)),
+    }));
+  }
 }
 
 try {
@@ -245,7 +266,11 @@ try {
       await page.reload();
       await page.getByRole("button", { name: "Export CSV", exact: true }).waitFor();
       const liveTitle = `${workspaceId}-live`;
-      await productionRepository.update((current) => ({ ...current, tasks: current.tasks.map((item) => item.id === task.id ? { ...item, title: liveTitle } : item) }));
+      await productionRepository.update((current) => applyAction(
+        { ...current, tasks: current.tasks.map((item) => item.id === task.id ? { ...item, title: liveTitle } : item) },
+        current.users.find((member) => member.id === workspaceId)!,
+        { type: "add-note", taskId: task.id, text: `${workspaceId} priority comment` },
+      ));
       await page.getByText(liveTitle, { exact: true }).waitFor({ timeout: 20_000 });
       const downloadPromise = page.waitForEvent("download");
       await page.getByRole("button", { name: "Export CSV", exact: true }).click();
@@ -263,7 +288,7 @@ try {
       await page.goto(origin);
       await page.getByRole("button", { name: "Continue with Google", exact: true }).waitFor();
       assert.deepEqual(errors, []);
-      console.log("PASS browser: real Neon SDK signin, protected Reports, session reload, external write -> Realtime -> visible table update without reload, Export CSV -> private storage download, signout; no page errors");
+      console.log("PASS browser: real Neon SDK signin, protected Reports, session reload, external comment -> Realtime -> visible table update without reload, Export CSV -> private storage download, signout; no page errors");
     } catch (error) {
       if (browserPage) {
         await mkdir("output/playwright/neon", { recursive: true });
@@ -278,9 +303,9 @@ try {
   await verifyRealtime(root, productionRepository, token, () => productionRepository.update((current) => ({
     ...current, users: current.users.map((user) => user.id === workspaceId ? { ...user, approved: false } : user),
   })));
-  console.log("PASS deployed API Realtime: managed JWT -> authenticated sealed query -> WebSocket snapshot -> committed revision -> only verification member revoked -> live rows removed");
+  console.log("PASS deployed API Realtime: managed JWT -> authenticated sealed query -> WebSocket snapshot -> new-request signal -> only verification member revoked -> live rows removed");
   await verifyRealtime(apiUrl, repository, token, () => repository.update((current) => ({ ...current, users: [] })));
-  console.log("PASS isolated Realtime: authenticated sealed query -> live WebSocket snapshot -> committed revision update -> immediate membership revocation removes live rows");
+  console.log("PASS isolated Realtime: authenticated sealed query -> live WebSocket snapshot -> new-request signal -> immediate membership revocation removes live rows");
 
   await auth("sign-out", {});
   cookies = "";

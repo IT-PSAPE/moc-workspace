@@ -304,3 +304,151 @@ self-review: PASS for the tuned local patch; no independent reviewer was used.
 
 Evidence: `output/playwright/egress/{baseline,after,query-traffic-verification,postgres-verification}.json`,
 rendered screenshots in that directory and its `flows/` and `internal/` folders.
+
+## Priority-only Realtime, 2026-10-30
+
+The reviewed Neon documentation confirms an initial query result followed by
+committed result changes. Idle subscriptions still have connection maintenance:
+the installed SDK's capability issuer hardcodes a 60-second lifetime, and its
+connection heartbeat starts after 20 seconds of idle traffic. The application
+renews capabilities through its authenticated API. These are distinct from
+workspace data updates. The project API still reports 5,630,069,721 transferred
+bytes on Free, for a period ending 1 November; this is a monthly transfer
+allowance. Historical per-query attribution remains unavailable.
+
+Before this patch, the live query selected the global workspace revision. Every
+repository save advanced that revision, including status changes and settings,
+and the browser fetched its complete role-filtered workspace on each change.
+The WebSocket payload itself was a small revision row; the follow-up API reads
+were the amplification. This proves a source of avoidable traffic, not that
+Realtime alone caused the entire historical total.
+
+The local patch adds `moc.workspace_members.live_revision` through migration
+`003_priority_live_updates.sql`. The live query reads only that member's small
+membership row. The counter advances transactionally for new requests (approved
+Cell 0 leaders) and new comments visible to that member. Unrelated departments
+receive no comment signal. Copying existing request notes onto an approved task
+does not generate a new-comment event. Status, assignment, catalog, quote,
+notification-read and role edits do not create a priority signal. Approval
+revocation/deletion still removes the subscribed row immediately.
+
+Ordinary changes now refresh every five foreground minutes even while Realtime
+is connected, as well as on tab return and manual refresh. Local mutations still
+update the cache as soon as saving completes. Background subscription cleanup,
+fresh capability fetch on return, the fifteen-minute public catalog cache and
+Johannesburg daily quote boundary are preserved.
+
+Validation: all 144 unit/API tests across 12 files, typecheck and production
+builds passed. The isolated PostgreSQL workflow applies all migrations and runs
+the exact live SELECT. It proves that status changes leave the counter unchanged,
+new requests notify Cell 0 leaders, task comments notify their department and
+Cell 0 leaders, other departments remain unchanged, and revocation removes the
+live result. A forced counter constraint failure proves the comment and signal
+roll back together. The seven audience tests also cover legacy approval note
+copying, in-place mutators, non-leaders and edited/deleted comments.
+
+The browser workflow uses actual UI/API behavior with mocked live transport. It
+proves ordinary edits stay cached until the scheduled check, new requests appear
+on a signal, externally posted comments appear in an open drawer on a signal,
+and a phone-width local comment appears immediately without another GET. It
+also checks reconnect, twenty simulated hidden minutes without API traffic,
+return, midnight rollover, revocation and desktop/mobile rendering. Separate
+code and interface self-review: PASS for this local patch. No independent
+reviewer was used. Production Neon delivery is unverified while quota blocks
+the service. The cloud verification workflow was updated to exercise a temporary
+new request instead of expecting a no-op save to emit an event.
+
+Deploy migrations before the updated API; then deploy the workspace. Existing
+clients can retain their old subscription until their next reconnect/reload.
+No production migration, deployment, commit or push was performed for this patch.
+Evidence: `output/playwright/egress/`, including the priority comment desktop and
+mobile screenshots and the PostgreSQL/browser verification JSON files.
+
+## Optimistic saving and fifteen-minute refreshes — 30 October 2026
+
+This follow-up supersedes the preceding five-minute schedule. The workspace and
+public catalog now refresh every fifteen foreground minutes. Priority request
+and comment signals, tab return, manual recovery and the daily quote boundary
+remain. Request/task drawers use the existing cache instead of fetching the
+whole workspace on every open.
+
+Workspace actions now optimistically update the shared TanStack cache before
+network completion. Member-scoped mutation queues serialize writes. Pending
+patches are rebased over confirmed data, so rolling back one failure preserves
+other pending or acknowledged edits. Canonical IDs, timestamps and normalization
+arrive in compact role-projected corrections. No-op status/member/move/settings
+edits still confirm canonical targets when a different client already made the
+same change. Legacy full action responses remain supported. Errors preserve
+existing form retry prompts/drafts; ambiguous failures reconcile after the queue
+drains. Live invalidations are retained across successful confirmations and
+coalesce into a read after settlement. Late responses cannot restore a signed-out
+session. Writes are not automatically retried after ambiguous network failures.
+
+Automated checks: 156 unit/API tests across 14 files and all workspace typechecks
+pass. Tests cover nested patch round trips, additions/deletions/order, compact
+comment payloads, canonical identity replacement, rollback, overlapping saves,
+references to unconfirmed IDs, no-op status confirmation, role-projected API
+corrections and legacy compatibility. Production builds pass with existing
+nonfatal Zod annotation and large-bundle warnings.
+
+The isolated browser workflow verifies a held save request: its comment is
+visible while the form still says Posting, before the server receives the write.
+It verifies a compact acknowledgement, one canonical comment, no follow-up GET
+on ordinary success, failure rollback with retained draft/error, retry, and live
+signals deferred during both failed and successful writes. It also verifies
+cached drawer opening, fifteen-minute refresh while connected/disconnected,
+twenty hidden minutes without requests, reconnect, quote rollover, access
+revocation and the public catalog. Desktop and 390px surfaces are captured under
+`output/playwright/egress/`. Live transport is mocked; normal API/UI paths are real
+and all writes go to disposable local stores.
+
+A representative seed-workspace comment response measured 802 bytes versus
+22,950 bytes for the full workspace (about 96% less API response data). This is a
+fixture measurement, not a claim about production Neon billing. Saves still read
+the aggregate from Postgres. The PostgreSQL egress workflow passes including
+priority counters, transaction rollback, projection sizes and the new read-only
+metadata diagnostic. Running `npm run diagnose:egress` against the configured
+production connection confirms SQL is still blocked by quota. Endpoint logs
+returned no entries; historical byte attribution remains unverified.
+
+Separate code/interface self-review: PASS for the inspected local changes,
+including immutable cache updates, per-member query keys, mutation ordering,
+rollback/queued refresh behavior, role projection and unchanged keyboard/modal
+flows. React checklist reviewed after the drawer changes. No independent reviewer
+was used. Managed Google OAuth/production Realtime delivery remain unverified
+while Neon quota blocks the service. Migration 003 must precede API deployment.
+Billing, production data and endpoints have not been changed.
+
+The broader request/approval/task completion/tracking, filters, calendar, CSV and
+member invitation journey also passes at 1440px and 390px after the drawer cache
+change. The department-leader/private-department checks pass. Internal task
+creation/reload, failure/retry and role boundaries pass at 1440px, 834px, 390px
+and 320px. Test selectors now distinguish a rendered optimistic comment from the
+still-populated draft, and board filter checks await React's rendered result.
+Cloud smoke coverage was adjusted to trigger a new comment/request rather than
+an ordinary task-title edit, and to remove its temporary request activity and
+notifications by ID. Its syntax was checked; live execution remains blocked.
+Latest source changes remain local and uncommitted; no new deployment or push
+was performed. The earlier transfer optimization commit remains on main.
+
+
+## Production release preparation — 4 November 2026
+
+The deployed source audit confirmed that production still used October 24/27
+builds. The user authorized deployment of the complete pending transfer patch.
+Neon still returns HTTP 402, so migration 003 cannot currently run manually.
+
+The API now safely completes that single additive migration on its first
+successful write or live-capability request after access returns. A pool-scoped
+promise prevents duplicate work; an existing-column probe avoids DDL on migrated
+databases. Lock and statement timeouts bound migration work. Failure rolls back,
+releases the connection and permits a later retry. No request handlers run this
+migration for health checks or anonymous sessions. The SQL is checked against
+migration 003 so the runtime recovery path cannot drift silently.
+
+All 161 tests across 15 files, typechecks and production builds pass. The isolated
+Postgres workflow additionally starts from the old membership schema, preserves
+an existing approved member, and proves its counter initializes to zero before
+normal priority writes. Self-review of this recovery change: PASS; no independent
+reviewer was used. Full production DB/Auth/Realtime verification remains quota
+blocked. Deployment status is recorded separately after production promotion.

@@ -289,11 +289,8 @@ try {
     await workspace
       .getByRole("button", { name: "Post comment", exact: true })
       .click();
-    await workspace
-      .getByText("Private verification note, visible only to leaders.", {
-        exact: true,
-      })
-      .waitFor();
+    await workspace.locator(".task-comment-list").getByText("Private verification note, visible only to leaders.", { exact: true }).waitFor();
+    await workspace.getByRole("status").getByText("Comment posted", { exact: true }).waitFor();
     await workspace
       .getByRole("button", { name: "Close dialog", exact: true })
       .click();
@@ -301,11 +298,7 @@ try {
     await workspace
       .getByRole("button", { name: `Open ${editedTitle}`, exact: true })
       .click();
-    await workspace
-      .getByText("Private verification note, visible only to leaders.", {
-        exact: true,
-      })
-      .waitFor();
+    await workspace.locator(".task-comment-list").getByText("Private verification note, visible only to leaders.", { exact: true }).waitFor();
     await snap(workspace, "completed-task-detail", width);
     await portal.locator(".track-submit").click();
     await portal.locator(".status-completed").waitFor();
@@ -376,6 +369,7 @@ try {
     await groupFilter.selectOption("Sound");
     assert.ok(await soundCards.count() > 0, "Sound group filter returns work");
     await boardStatus.selectOption("completed");
+    await workspace.waitForFunction((total) => { const count = document.querySelectorAll(".task-card").length; return count > 0 && count < total; }, allSoundCards);
     const completedSoundCards = await soundCards.count();
     assert.ok(completedSoundCards > 0 && completedSoundCards < allSoundCards);
     await workspace

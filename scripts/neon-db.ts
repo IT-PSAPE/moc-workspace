@@ -15,7 +15,7 @@ try {
     await client.query(await readFile(new URL(file, directory), "utf8"));
   }
   await client.query("COMMIT");
-  console.log("PASS Postgres migrations: workspace state, report exports, live membership and revisions");
+  console.log("PASS Postgres migrations: workspace state, report exports, live membership and priority signals");
 } catch (error) {
   await client.query("ROLLBACK");
   throw error;

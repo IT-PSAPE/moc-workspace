@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApiApp } from "./index";
 import { JsonRepository } from "./repository";
-import { createSeedState, type WorkspaceState } from "@moc/shared";
+import { applyStatePatch, createSeedState, type ActionReceipt, type WorkspaceState } from "@moc/shared";
 
 process.env.DEMO_MODE = "true";
 
@@ -51,6 +51,33 @@ afterEach(async () => {
 });
 
 describe("MOC API", () => {
+  it.each(["cell-0", "sound"])("returns compact, role-projected corrections for %s without changing legacy responses", async (department) => {
+    const { app, repository, login } = await makeBulkActionHarness();
+    const cookie = await login(department);
+    const headers = { origin: "http://localhost:5173", "content-type": "application/json", cookie };
+    const before = await (await app.request("/api/workspace", { headers })).json() as WorkspaceState;
+    const task = before.tasks.find((item) => item.department === department)!;
+    const response = await app.request("/api/actions?response=changes", {
+      method: "POST", headers, body: JSON.stringify({ type: "add-note", taskId: task.id, text: "Canonical compact comment" }),
+    });
+    expect(response.status).toBe(200);
+    const receipt = await response.json() as ActionReceipt;
+    expect(receipt.ok).toBe(true);
+    const after = await (await app.request("/api/workspace", { headers })).json() as WorkspaceState;
+    expect(applyStatePatch(before, receipt.changes)).toEqual(after);
+    expect(JSON.stringify(receipt).length).toBeLessThan(JSON.stringify(after).length / 3);
+    expect(JSON.stringify(receipt)).not.toContain("trackingCodeHash");
+    if (department !== "cell-0") {
+      const hiddenTask = (await repository.read()).tasks.find((item) => item.department === "cell-0")!;
+      expect(JSON.stringify(receipt)).not.toContain(hiddenTask.id);
+      expect(after.users).toHaveLength(1);
+    }
+    const legacy = await app.request("/api/actions", {
+      method: "POST", headers, body: JSON.stringify({ type: "read-notifications" }),
+    });
+    expect(await legacy.json()).toMatchObject({ catalog: expect.any(Object), tasks: expect.any(Array) });
+  });
+
   it.each(["cell-0", "sound", "design", "visual-media"])("lets an approved %s leader create and persist an internal task", async (department) => {
     const { repository, login, action } = await makeBulkActionHarness();
     const cookie = await login(department);

@@ -31,7 +31,7 @@ const isShortNotice = (request: MinistryRequest) => {
 };
 
 export default function RequestsPage() {
-  const { state, user, loading, act, refresh } = useWorkspace();
+  const { state, user, loading, act } = useWorkspace();
   const isCell0 = Boolean(user?.approved && user.department === "cell-0");
   const canReview = isCell0 && Boolean(user?.isLeader);
   const [filter, setFilter] = useState("backlog");
@@ -45,9 +45,8 @@ export default function RequestsPage() {
     (request: MinistryRequest) => {
       setSelectedId(request.id);
       setFeedback("");
-      void refresh();
     },
-    [refresh],
+    [],
   );
   const requests = useMemo(
     () => {

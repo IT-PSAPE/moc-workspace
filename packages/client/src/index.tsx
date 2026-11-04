@@ -3,12 +3,15 @@ import {
   QueryClientProvider,
   useQuery,
   useQueryClient,
+  useMutation,
+  useIsMutating,
   queryOptions,
   focusManager,
 } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { createRealtimeClient, type SealedLiveQuery } from "@neon/realtime/client";
 import { RealtimeProvider, useLiveQuery } from "@neon/realtime-react";
+import { OptimisticWorkspace } from "./optimistic-workspace";
 import { authHeaders, neonAuth } from "./auth";
 import { isPermanentRequestError, PUBLIC_CATALOG_REFRESH_MS, retryQuery, WORKSPACE_FALLBACK_INTERVAL_MS, workspaceRefetchInterval } from "./query-policy";
 export { neonAuth, signInWithGoogle } from "./auth";
@@ -19,6 +22,7 @@ import type {
   WorkspaceState,
   WorkspaceAction,
   Catalog,
+  ActionReceipt,
 } from "@moc/shared";
 
 const environment = (
@@ -41,7 +45,7 @@ export async function api<T>(
   const response = await fetch(`${API_URL}${path}`, {
     credentials: "include",
     ...options,
-    headers: { "Content-Type": "application/json", ...(/\/api\/(session|workspace|actions|integrations|reports)(\/|$)/.test(path) ? await authHeaders() : {}), ...options.headers },
+    headers: { "Content-Type": "application/json", ...(/\/api\/(session|workspace|actions|integrations|reports)(\/|$)/.test(path.split("?")[0]) ? await authHeaders() : {}), ...options.headers },
   });
   const body = await response
     .json()
@@ -82,16 +86,22 @@ export function ClientProvider({ children, liveWorkspace = false }: { children: 
     ? <RealtimeProvider client={realtimeClient}>{content}</RealtimeProvider> : content;
 }
 
+const optimisticSaves = new WeakMap<QueryClient, Map<string, OptimisticWorkspace>>();
+function saveJournals(client: QueryClient) {
+  let journals = optimisticSaves.get(client);
+  if (!journals) { journals = new Map(); optimisticSaves.set(client, journals); }
+  return journals;
+}
+
 function WorkspaceSync() {
   const { session } = useSession();
   const focused = useSyncExternalStore(focusManager.subscribe, () => focusManager.isFocused(), () => true);
   const userId = session?.user?.approved ? session.user.id : undefined;
-  const [liveUserId, setLiveUserId] = useState<string>();
-  const onLiveChange = useCallback((live: boolean) => setLiveUserId(live ? userId : undefined), [userId]);
+  const saving = useIsMutating({ mutationKey: ["workspace-action", userId] });
   // Only this observer owns timers. Pages and dialogs share its cached result.
   useQuery({
-    ...workspaceOptions(session),
-    refetchInterval: (query) => workspaceRefetchInterval(Boolean(userId && liveUserId === userId), query.state.error),
+    ...workspaceOptions(session, saving),
+    refetchInterval: (query) => workspaceRefetchInterval(query.state.error),
     refetchOnWindowFocus: (query) => isPermanentRequestError(query.state.error) ? false : "always",
     refetchOnReconnect: (query) => isPermanentRequestError(query.state.error) ? false : "always",
   });
@@ -104,18 +114,13 @@ function WorkspaceSync() {
     refetchInterval: (query) => query.state.error && !isPermanentRequestError(query.state.error) ? WORKSPACE_FALLBACK_INTERVAL_MS : false,
   });
   return focused && userId && sealed.isSuccess && !sealed.isFetching
-    ? <LiveWorkspaceRevision key={userId} sealed={sealed.data} refresh={fetchSealed} onLiveChange={onLiveChange} /> : null;
+    ? <LiveWorkspaceRevision key={userId} sealed={sealed.data} refresh={fetchSealed} /> : null;
 }
 
-function LiveWorkspaceRevision({ sealed, refresh, onLiveChange }: { sealed: SealedLiveQuery<WorkspaceRevision>; refresh: () => Promise<SealedLiveQuery<WorkspaceRevision>>; onLiveChange: (live: boolean) => void }) {
+function LiveWorkspaceRevision({ sealed, refresh }: { sealed: SealedLiveQuery<WorkspaceRevision>; refresh: () => Promise<SealedLiveQuery<WorkspaceRevision>> }) {
   const { data, status } = useLiveQuery(sealed, { refreshQuery: refresh });
   const revision = data?.[0]?.revision;
-  const hasSnapshot = data !== undefined;
   const previous = useRef<string | undefined>(undefined);
-  useEffect(() => {
-    onLiveChange(status === "live" && hasSnapshot);
-    return () => onLiveChange(false);
-  }, [status, hasSnapshot, onLiveChange]);
   useEffect(() => {
     if (status !== "live" || data === undefined) return;
     if (!data.length) {
@@ -123,7 +128,8 @@ function LiveWorkspaceRevision({ sealed, refresh, onLiveChange }: { sealed: Seal
       void queryClient.invalidateQueries({ queryKey: ["session"] });
     } else if (previous.current !== revision) {
       previous.current = revision;
-      void queryClient.invalidateQueries({ queryKey: ["workspace"] });
+      for (const journal of saveJournals(queryClient).values()) journal.needsRefresh = true;
+      void queryClient.invalidateQueries({ queryKey: ["workspace"], refetchType: queryClient.isMutating({ mutationKey: ["workspace-action"] }) ? "none" : "active" });
     }
   }, [data, revision, status]);
   return status === "error" ? <span role="status" className="sr-only">Live updates paused. Refresh to reconnect.</span> : null;
@@ -136,19 +142,21 @@ const empty: WorkspaceState = {
   activities: [],
   notifications: [],
 };
-function workspaceOptions(session: Session | undefined) {
+function workspaceOptions(session: Session | undefined, saving = 0) {
   return queryOptions({
     queryKey: ["workspace", session?.user?.id],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
+      const cached = queryClient.getQueryData<WorkspaceState>(["workspace", session?.user?.id]);
+      if (cached && queryClient.isMutating({ mutationKey: ["workspace-action", session?.user?.id] })) return cached;
       try {
-        return await api<WorkspaceState>("/api/workspace");
+        return await api<WorkspaceState>("/api/workspace", { signal });
       } catch (error) {
         if (error instanceof ApiError && error.status === 401)
           void queryClient.invalidateQueries({ queryKey: ["session"] });
         throw error;
       }
     },
-    enabled: !!session?.user?.approved,
+    enabled: !!session?.user?.approved && !saving,
     staleTime: Infinity,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
@@ -187,29 +195,68 @@ export function useSession() {
 export function useWorkspace() {
   const client = useQueryClient();
   const { session, loading: sessionLoading } = useSession();
-  const query = useQuery(workspaceOptions(session));
   const user = session?.user as Leader;
-  async function act(action: WorkspaceAction) {
-    const send = () =>
-      api<WorkspaceState>("/api/actions", {
-        method: "POST",
-        body: JSON.stringify(action),
+  const userId = user?.id;
+  const saving = useIsMutating({ mutationKey: ["workspace-action", userId] });
+  const query = useQuery(workspaceOptions(session, saving));
+  const workspaceKey = ["workspace", userId];
+  const mutation = useMutation({
+    mutationKey: ["workspace-action", userId],
+    // Network writes share a queue across all pages/dialogs for this member.
+    scope: { id: `workspace-action:${userId}` },
+    retry: false,
+    onMutate: async (action: WorkspaceAction) => {
+      await client.cancelQueries({ queryKey: workspaceKey, exact: true });
+      const current = client.getQueryData<WorkspaceState>(workspaceKey);
+      if (!current || !userId) throw new Error("Please wait for your workspace to load before saving.");
+      const journals = saveJournals(client);
+      let journal = journals.get(userId);
+      if (!journal) { journal = new OptimisticWorkspace(current, userId); journals.set(userId, journal); }
+      const save = journal.begin(action);
+      client.setQueryData(workspaceKey, journal.state);
+      return { journal, save };
+    },
+    mutationFn: async (action: WorkspaceAction) => {
+      const send = () => api<ActionReceipt | WorkspaceState>("/api/actions?response=changes", {
+        method: "POST", body: JSON.stringify(action),
       });
-    let result: WorkspaceState;
-    try {
-      result = await send();
-    } catch (error) {
-      if (!(error instanceof ApiError) || error.status !== 401) throw error;
-      await client.invalidateQueries({ queryKey: ["session"] });
-      if (!client.getQueryData<Session>(["session"])?.user) throw error;
-      result = await send();
-    }
-    client.setQueryData(["workspace", user.id], result);
-    const updatedMember = result.users.find((member) => member.id === user.id);
-    if (updatedMember)
-      client.setQueryData<Session>(["session"], (current) =>
-        current ? { ...current, user: updatedMember } : current,
-      );
+      try { return await send(); }
+      catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 401) throw error;
+        await client.invalidateQueries({ queryKey: ["session"] });
+        if (!client.getQueryData<Session>(["session"])?.user) throw error;
+        return send();
+      }
+    },
+    onSuccess: (result, _action, context) => {
+      const state = context.journal.finish(context.save, result);
+      const signedIn = client.getQueryData<Session>(["session"])?.user;
+      if (signedIn?.id !== userId || !signedIn?.approved) return;
+      client.setQueryData(workspaceKey, state);
+      const updated = context.journal.confirmedState.users.find((member) => member.id === userId);
+      if (updated) client.setQueryData<Session>(["session"], (current) => current?.user?.id === userId ? { ...current, user: updated } : current);
+    },
+    onError: (_error, _action, context) => {
+      if (context) {
+        context.journal.needsRefresh = true;
+        const state = context.journal.finish(context.save);
+        const signedIn = client.getQueryData<Session>(["session"])?.user;
+        if (signedIn?.id === userId && signedIn.approved) client.setQueryData(workspaceKey, state);
+      }
+      // A lost response may still have committed. Reconcile once the write queue drains.
+      void client.invalidateQueries({ queryKey: workspaceKey, exact: true, refetchType: "none" });
+    },
+    onSettled: () => {
+      const journal = userId ? saveJournals(client).get(userId) : undefined;
+      if (journal?.idle && userId) {
+        // setQueryData clears invalidation, so remember signals across every ack.
+        if (journal.needsRefresh) void client.invalidateQueries({ queryKey: workspaceKey, exact: true, refetchType: "none" });
+        saveJournals(client).delete(userId);
+      }
+    },
+  });
+  async function act(action: WorkspaceAction) {
+    await mutation.mutateAsync(action);
   }
   async function switchDepartment(department: Department) {
     const result = await api<Session>("/api/auth/demo", {
@@ -237,7 +284,7 @@ export function useWorkspace() {
     error: query.error?.message,
     act,
     refresh: async () => {
-      await query.refetch();
+      if (!saving) await query.refetch();
     },
     switchDepartment,
     logout,

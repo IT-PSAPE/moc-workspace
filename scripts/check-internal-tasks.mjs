@@ -55,7 +55,7 @@ try {
       await dialog.getByPlaceholder("Context and coordination details").fill("Coordinate with the department.");
       await snap(page, "leader-create", width);
       if (width === 1440) {
-        await page.route(`${clientApiUrl}/api/actions`, (route) => route.fulfill({
+        await page.route(`${clientApiUrl}/api/actions*`, (route) => route.fulfill({
           status: 503, contentType: "application/json", body: JSON.stringify({ error: "Temporary save failure. Try again." }),
         }), { times: 1 });
         await dialog.getByRole("button", { name: "Create task", exact: true }).click();

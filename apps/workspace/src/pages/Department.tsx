@@ -49,7 +49,7 @@ export default function DepartmentPage({
 }: {
   department: DepartmentId;
 }) {
-  const { state, user, loading, error, act, refresh } = useWorkspace();
+  const { state, user, loading, error, act } = useWorkspace();
   const departmentInfo = state.catalog?.departments.find(
     (item) => item.id === department,
   );
@@ -403,7 +403,6 @@ export default function DepartmentPage({
                         onClick={() => {
                           setSelectedId(task.id);
                           setFeedback("");
-                          void refresh();
                         }}
                         aria-label={"Open " + task.title}
                       >

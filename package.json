@@ -21,7 +21,8 @@
     "verify:neon": "tsx scripts/check-neon.ts",
     "verify:quotes": "tsx scripts/check-banner-quotes.ts",
     "deploy:neon": "neon deploy --update-existing --env .env.local",
-    "vercel:env": "node scripts/configure-vercel-env.mjs"
+    "vercel:env": "node scripts/configure-vercel-env.mjs",
+    "diagnose:egress": "tsx scripts/diagnose-neon-egress.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

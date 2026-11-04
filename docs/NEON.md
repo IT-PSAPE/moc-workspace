@@ -81,22 +81,34 @@ its next API request.
 ## Live workspace updates
 
 `preview.realtime` enables Realtime for both local frontend origins and the
-production workspace origin. The server
-seals a short-lived query returning only the workspace ID and revision. It joins
-`moc.workspace_members`, a transactional mirror of approved membership, so
-removing a member removes their live result immediately. Full workspace records
-continue to pass through the existing API's role projection. The React Realtime
-binding renews sealed queries and invalidates TanStack Query when revisions
-change; saving from another browser updates task and request views.
+production workspace origin. The server seals a short-lived query over
+`moc.workspace_members`, returning only the workspace ID and that member's
+`live_revision`. The counter advances for new requests (approved Cell 0 leaders)
+and newly posted comments (members who can read those private notes). Ordinary
+status, assignment, settings and notification-read changes do not advance it.
+Removing or revoking a member removes their live row immediately. Full workspace
+records continue to pass through the existing API's role projection after an
+important signal; the live query never reads the workspace JSON payload.
+
+Migration `003_priority_live_updates.sql` adds the bounded per-member counter.
+Prefer running migrations before deploying the updated API. If quota suspension
+prevents that, the API applies this same additive migration before its first
+write or live capability once database access returns. It probes once per pool,
+shares concurrent initialization, uses bounded lock/statement timeouts, and
+retries after a failed connection. Existing members and data are preserved.
+Counter updates and the underlying request/comment save commit in one transaction; copied comments when
+approving a request do not count as newly posted comments. The global aggregate
+revision remains available for existing clients.
 
 One provider observer owns workspace refresh scheduling. Page and dialog hooks
-share its TanStack Query cache without creating polling timers. While Realtime
-is live, the workspace refreshes on revision changes, window focus/reconnect,
-manual refresh, and the Johannesburg daily quote boundary. Without Realtime,
-one foreground fallback refresh runs every five minutes. The public catalog is cached
+share its TanStack Query cache without creating polling timers. Priority live
+signals refresh the workspace immediately. Other changes refresh once every fifteen
+foreground minutes, even when Realtime is connected, plus window focus/reconnect,
+manual refresh, and the Johannesburg daily quote boundary. The public catalog is cached
 for fifteen minutes. Hidden tabs unsubscribe from live updates and stop capability
 renewals; returning obtains a fresh capability and refreshes workspace data.
-Local saves still update the shared cache immediately. Permanent request and quota failures stop automatic retries
+Request and task drawers use cached data without forcing a workspace GET on
+every open. Local saves update the shared cache immediately. Permanent request and quota failures stop automatic retries
 and polling; the user can retry manually after service is restored.
 
 Postgres member checks select the matching member and catalog, and public catalog
@@ -112,6 +124,12 @@ but does not currently inject it into the Function; `deploy:neon` loads
 Only `VITE_NEON_REALTIME_URL` is public. No sealed capabilities go in URLs or
 persistent browser storage. Terminal Realtime errors announce that updates are
 paused; reloading reconnects.
+
+Realtime sends an initial result and then result changes. An idle connection
+still exchanges small heartbeats and renews sealed capabilities; the installed
+SDK issues 60-second capabilities. These renewals use the narrow member lookups
+described above. Narrowing live events reduces full workspace refetches caused
+by ordinary saves; it does not eliminate connection-maintenance traffic.
 
 ## Private report files
 
@@ -137,3 +155,75 @@ Official guidance: [connection methods](https://neon.com/docs/connect/choose-con
 [React Auth](https://neon.com/docs/auth/quick-start/react),
 [Functions authentication](https://neon.com/docs/compute/functions/authentication),
 and [S3 compatibility](https://neon.com/docs/storage/s3-compatibility).
+
+## Optimistic saves and transfer diagnosis
+
+Workspace actions use TanStack mutations: cancel in-flight reads, apply a local
+prediction, queue network writes per member, then merge the server's compact,
+role-projected correction. A failed save removes its prediction while preserving
+other pending or confirmed edits. Existing forms retain their error and retry
+behavior; comments keep the draft after failure. Server-generated IDs and dates
+replace predictions after confirmation. Actions on an item still awaiting its
+server ID ask the user to wait. Writes are not automatically retried after a
+network failure, because a lost acknowledgement might already have committed.
+One reconciliation read runs after errors or live invalidations queued during a
+save; ordinary successful saves do not trigger a workspace GET.
+
+`POST /api/actions?response=changes` returns `{ ok: true, changes }` instead of the
+whole workspace. Older clients can still use the full response. This reduces
+API-to-browser transfer. `PostgresRepository.update` still locks and reads the
+aggregate from Neon to validate and apply actions. Eliminating that read would
+require a separate change to scoped persistence, rather than optimistic UI alone.
+
+After database access returns, run `npm run diagnose:egress`. This read-only
+command reports current workspace/catalog byte sizes and the busiest surviving
+`pg_stat_statements` entries by category and query ID. It never prints credentials,
+SQL text, member records or comments, and never resets counters. Statement counts
+and current row widths can identify high-frequency full-workspace reads and
+save reads; they are estimates of amplification, not exact historical billed
+bytes. Compute restarts can clear statistics. If the extension is unavailable,
+inspect/enable it separately before collecting a representative usage window.
+
+## Quota recovery investigation — 30 October 2026
+
+The linked free project reports 5,630,069,721 transferred bytes and a consumption
+period ending 1 November 2026 at 00:00 UTC (02:00 SAST). SQL, managed Auth and
+database-backed API routes remain blocked by `GENERIC_QUOTA_EXCEEDED`. Branch
+endpoint logs returned no records. No saved Neon snapshots exist. The two local
+state JSON files contain demo members, not a usable production backup.
+
+Neon's [network transfer documentation](https://neon.com/docs/introduction/network-transfer)
+states that exceeding the free 5 GB project allowance suspends compute until
+reset or upgrade. A second branch shares the project's allowance. There is no
+documented connection-string, pooling or compression setting that bypasses this
+quota. The [Launch plan](https://neon.com/docs/introduction/plans) is pay-as-you-go,
+with no minimum monthly fee and 500 GB of public transfer per project included.
+Upgrading the existing project is the documented immediate recovery path and
+keeps the existing data, Auth configuration and endpoints in place. Billing has
+not been changed.
+
+[Migration to another Neon project](https://neon.com/docs/import/migrate-from-neon)
+is supported using a direct source connection and `pg_dump`/`pg_restore`.
+It requires source access, which is currently blocked. Creating an empty project
+would therefore not restore service. A snapshot, if one existed, restores within
+the same project. Provider-assisted temporary export access is another avenue to
+ask Neon about; availability is not confirmed and no support message was sent.
+
+If migration is still wanted after access returns:
+
+1. Pause application writes and take a verified source export with the direct
+   connection; include application schemas and record row counts.
+2. Create and provision a destination, restore into an isolated database, apply
+   migrations, and compare counts, representative records and business member IDs.
+3. Configure the destination's managed Auth/Google provider, trusted domains,
+   Realtime and secrets. Users may need to sign in again. The API matches verified
+   Google emails to application member IDs; absence of passwords does not make
+   Auth settings or existing sessions portable automatically.
+4. Copy private report objects and validate object keys against `moc.report_exports`;
+   database rows alone do not migrate stored files.
+5. Test sign-in, role visibility, requests, comments, mutations, rollback and report
+   downloads before changing API/frontend endpoints. Keep the source for recovery.
+
+No new project, data migration, production cutover or paid upgrade was performed.
+Exact historical attribution of all 5.63 GB remains unverified while SQL is
+blocked; identified code paths are contributors, not proof of the full bill.

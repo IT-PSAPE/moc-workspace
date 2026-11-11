@@ -81,6 +81,10 @@ export function workspaceActionPatch(before: WorkspaceState, after: WorkspaceSta
     const requestId = after.tasks.find((task) => task.id === action.taskId)?.requestId;
     if (requestId) confirmRows("requests", [requestId]);
   }
+  if (action.type === "delete-request") {
+    const taskIds = before.tasks.filter((task) => task.requestId === action.requestId).map((task) => task.id);
+    if (taskIds.length) confirmRows("tasks", taskIds);
+  }
   if (action.type === "update-member") confirmRows("users", [action.userId]);
   if (action.type === "move-members") confirmRows("users", action.userIds);
   return { kind: "object", fields, remove: diff?.kind === "object" ? diff.remove : [] };

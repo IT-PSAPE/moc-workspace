@@ -4,13 +4,15 @@ export function projectWorkspace(
   state: WorkspaceState,
   user: NonNullable<Session["user"]>,
 ): WorkspaceState {
-  if (user.department === "cell-0" && user.isLeader)
+  if (user.department === "cell-0" && user.isLeader) {
+    const { deletedRequestSequences: _deletedRequestSequences, ...visibleState } = state;
     return {
-      ...state,
+      ...visibleState,
       requests: state.requests.map(
         ({ trackingCodeHash: _trackingCodeHash, ...request }) => request,
       ),
     };
+  }
   const cell0RequestTaskIds = new Set<string>();
   if (user.department === "cell-0") {
     const approvedRequests = new Map(

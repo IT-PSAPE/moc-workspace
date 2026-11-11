@@ -114,6 +114,8 @@ export interface WorkspaceState {
   users: Leader[];
   activities: Activity[];
   notifications: Notification[];
+  /** Highest deleted request sequence per year, so public references are never reused. */
+  deletedRequestSequences?: Record<string, number>;
   /** Optional for workspaces saved before configurable banner quotes. */
   bannerQuotes?: BannerQuoteSettings;
 }
@@ -176,6 +178,7 @@ export type WorkspaceAction =
   | { type: "reset-banner-quote-today" }
   | { type: "approve"; requestId: string }
   | { type: "reject"; requestId: string; reason: string }
+  | { type: "delete-request"; requestId: string }
   | {
       type: "update-task";
       taskId: string;

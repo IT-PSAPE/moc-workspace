@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApiApp } from "./index";
 import { JsonRepository } from "./repository";
-import { applyStatePatch, createSeedState, type ActionReceipt, type WorkspaceState } from "@moc/shared";
+import { applyStatePatch, createSeedState, type ActionReceipt, type SubmissionReceipt, type WorkspaceState } from "@moc/shared";
 
 process.env.DEMO_MODE = "true";
 
@@ -141,6 +141,79 @@ describe("MOC API", () => {
     const disabledState = await repository.read();
     expect((await action(cookie, { type: "create-task", input })).status).toBe(401);
     expect(await repository.read()).toEqual(disabledState);
+  });
+
+  it("allows approved Cell 0 members to delete a request and retires its tracking code and reference", async () => {
+    const { app, repository, login, action } = await makeBulkActionHarness();
+    const cell0Cookie = await login("cell-0");
+    const soundCookie = await login("sound");
+    const publicHeaders = { origin: "http://localhost:5174", "content-type": "application/json" };
+    const input = {
+      ministry: "Youth Ministry", service: "social-content", title: "Duplicate recap request",
+      instructions: "Prepare a recap.", notes: "Use the approved event footage.",
+      dueAt: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+    };
+    const submit = async () => {
+      const response = await app.request("/api/requests", {
+        method: "POST", headers: publicHeaders, body: JSON.stringify(input),
+      });
+      expect(response.status).toBe(201);
+      return await response.json() as SubmissionReceipt;
+    };
+    const { request, trackingCode } = await submit();
+    const track = () => app.request("/api/track", {
+      method: "POST", headers: publicHeaders, body: JSON.stringify({ code: trackingCode }),
+    });
+    const remove = { type: "delete-request", requestId: request.id };
+    const setCell0Approval = (approved: boolean) => repository.update((state) => ({
+      ...state,
+      users: state.users.map((user) => user.department === "cell-0" ? { ...user, isLeader: false, approved } : user),
+    }));
+
+    expect((await track()).status).toBe(200);
+    const disabled = await setCell0Approval(false);
+    expect((await action(soundCookie, remove)).status).toBe(400);
+    expect((await action(cell0Cookie, remove)).status).toBe(401);
+    expect(await repository.read()).toEqual(disabled);
+
+    const enabled = await setCell0Approval(true);
+    const headers = { origin: "http://localhost:5173", "content-type": "application/json", cookie: cell0Cookie };
+    const workspace = async () => await (await app.request("/api/workspace", { headers })).json() as WorkspaceState;
+    const before = await workspace();
+    const response = await app.request("/api/actions?response=changes", {
+      method: "POST", headers, body: JSON.stringify(remove),
+    });
+    expect(response.status).toBe(200);
+    const receipt = await response.json() as ActionReceipt;
+    expect(applyStatePatch(before, receipt.changes)).toEqual(await workspace());
+    const stored = await repository.read();
+    expect(stored.requests).toEqual(enabled.requests.filter((item) => item.id !== request.id));
+    expect(stored.tasks).toEqual(enabled.tasks);
+    expect((await action(cell0Cookie, remove)).status).toBe(400);
+    expect((await track()).status).toBe(404);
+    expect((await app.request("/api/requests", {
+      method: "PATCH", headers: publicHeaders, body: JSON.stringify({ code: trackingCode, input }),
+    })).status).toBe(404);
+    const replacement = await submit();
+    expect(replacement.request.reference).not.toBe(request.reference);
+    expect((await track()).status).toBe(404);
+  });
+
+  it("preserves assigned work and task comments when a Cell 0 member deletes its request", async () => {
+    const { repository, login, action } = await makeBulkActionHarness();
+    const cookie = await login("cell-0");
+    const before = await repository.update((state) => ({
+      ...state,
+      users: state.users.map((user) => user.department === "cell-0" ? { ...user, isLeader: false } : user),
+    }));
+    const request = before.requests.find((item) => item.status === "approved")!;
+    const linkedTask = before.tasks.find((item) => item.id === request.taskId)!;
+    const response = await action(cookie, { type: "delete-request", requestId: request.id });
+    expect(response.status).toBe(200);
+    const after = await repository.read();
+    expect(after.requests).toEqual(before.requests.filter((item) => item.id !== request.id));
+    const { requestId: _requestId, ...retainedTask } = linkedTask;
+    expect(after.tasks).toEqual(before.tasks.map((item) => item.id === linkedTask.id ? retainedTask : item));
   });
 
   it("persists public option availability while preserving existing request edits and tracking", async () => {

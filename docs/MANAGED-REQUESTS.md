@@ -69,6 +69,7 @@ and private credential contracts. Actions:
 - save-department {department:DepartmentDefinition,groupRenames?:Record<string,string>}
 - delete-department {departmentId}
 - delete-departments {departmentIds:string[]}
+- delete-request {requestId}
 - delete-members {userIds:string[]}
 - move-members {userIds:string[],department,groups:string[]}
 - invite-member {input:{name,email,duty,department,groups,isLeader}}
@@ -94,6 +95,10 @@ transaction; old session roles never confer current management access. The full
 member directory remains restricted to Cell 0 leaders. The Requests inbox is
 readable by approved Cell 0 members only; other departments receive no request
 collection. Request decisions remain leader-only.
+Approved Cell 0 members can permanently delete a request in any status from
+its details drawer. Deletion disables public tracking and editing for that
+request. Its reference is never reissued, and any assigned task and its
+comments remain with the department.
 
 Names are compared trimmed and case-insensitively for duplicates. Ministry rename
 updates matching request/task names atomically. Stable service/department IDs

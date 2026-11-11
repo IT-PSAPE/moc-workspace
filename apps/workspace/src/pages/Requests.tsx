@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { Check, FileText, Search, X } from "lucide-react";
+import { Check, FileText, Search, Trash2, X } from "lucide-react";
 import {
   Button,
   DataTable,
@@ -12,6 +12,7 @@ import type { MinistryRequest } from "@moc/shared";
 import { useWorkspace } from "@moc/client";
 import RequestDetails from "../RequestDetails";
 import DetailsDrawer from "../components/DetailsDrawer";
+import { ConfirmDialog } from "../components/UiDialogs";
 import {
   createWorkColumns,
   WORK_TABLE_MIN_WIDTH,
@@ -38,13 +39,20 @@ export default function RequestsPage() {
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<MinistryRequest | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const [deletedReference, setDeletedReference] = useState("");
+  const deleteButton = useRef<HTMLButtonElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const deleted = useRef(false);
   const showRequest = useCallback(
     (request: MinistryRequest) => {
+      deleted.current = false;
       setSelectedId(request.id);
       setFeedback("");
+      setDeletedReference("");
     },
     [],
   );
@@ -101,6 +109,8 @@ export default function RequestsPage() {
       ? (state?.requests ?? []).length
       : (state?.requests ?? []).filter((request) => request.status === status)
           .length;
+  // Keep the details mounted behind the confirmation during the optimistic save.
+  const detailRequest = selected ?? deleteTarget;
   const statusOptions = statuses.map((status) => ({
     value: status,
     label: `${status === "all" ? "All requests" : status[0].toUpperCase() + status.slice(1)} · ${count(status)}`,
@@ -173,12 +183,16 @@ export default function RequestsPage() {
         <div className="workflow-search !ml-auto !w-full !min-w-0 !max-w-[320px] !flex-none">
           <Search size={17} />
           <input
+            ref={searchInput}
             aria-label="Search requests"
             placeholder="Search reference, title, ministry, service or routing…"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
         </div>
+      </div>
+      <div role="status" className={deletedReference ? "text-sm text-[var(--ink-secondary)]" : "sr-only"}>
+        {deletedReference && `Request ${deletedReference} deleted.`}
       </div>
       {feedback && (
         <div className="workflow-alert" role="alert">
@@ -217,16 +231,27 @@ export default function RequestsPage() {
       </DataTable.Root>
 
       <DetailsDrawer
-        open={Boolean(selectedId) && !rejectOpen}
+        open={Boolean(detailRequest) && !rejectOpen}
         onClose={() => setSelectedId(null)}
         title="Request details"
+        finalFocus={() => deleted.current ? searchInput.current : true}
       >
-        {selected && (
-          <RequestDetails key={selected.id} request={selected}>
-            {canReview && selected.status !== "approved" && (
-              <div className="request-review-actions">
+        {detailRequest && (
+          <RequestDetails key={detailRequest.id} request={detailRequest}>
+            <div className="request-review-actions">
+              <Button
+                ref={deleteButton}
+                type="button"
+                variant="ghost"
+                aria-haspopup="dialog"
+                disabled={busy || !selected}
+                onClick={() => setDeleteTarget(detailRequest)}
+              >
+                <Trash2 size={15} aria-hidden="true" /> Delete request
+              </Button>
+              {canReview && detailRequest.status !== "approved" && (
                 <div className="detail-actions">
-                  {selected.status === "backlog" && (
+                  {detailRequest.status === "backlog" && (
                     <Button
                       variant="danger"
                       disabled={busy}
@@ -243,8 +268,8 @@ export default function RequestsPage() {
                     {busy ? "Routing…" : "Approve and route"}
                   </Button>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
             {feedback && (
               <div className="workflow-alert" role="alert">
                 {feedback}
@@ -252,6 +277,23 @@ export default function RequestsPage() {
             )}
           </RequestDetails>
         )}
+        <ConfirmDialog
+          open={Boolean(deleteTarget)}
+          onClose={() => setDeleteTarget(null)}
+          title="Delete request?"
+          description={deleteTarget
+            ? `Delete “${deleteTarget.title}” (${deleteTarget.reference})? Its tracking code will stop working. This cannot be undone.${deleteTarget.status === "approved" ? " Any assigned task will stay on its department board." : ""}`
+            : ""}
+          confirmLabel="Delete request"
+          onConfirm={async () => {
+            if (!deleteTarget) return;
+            await act({ type: "delete-request", requestId: deleteTarget.id });
+            deleted.current = true;
+            setDeletedReference(deleteTarget.reference);
+            setSelectedId(null);
+          }}
+          finalFocus={() => deleted.current ? false : deleteButton.current}
+        />
       </DetailsDrawer>
       <Modal
         open={rejectOpen}

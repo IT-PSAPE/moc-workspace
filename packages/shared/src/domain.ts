@@ -392,6 +392,7 @@ export function validateWorkspaceAction(
     case "reset-banner-quote-today":
       return;
     case "approve":
+    case "delete-request":
       requireNonEmptyString(value.requestId, "Request ID");
       return;
     case "reject":
@@ -623,17 +624,19 @@ function appendNotifications(
   return [...state.notifications, ...notifications];
 }
 
+const requestReferenceParts = (reference: string) =>
+  /^MOC-(\d{4})-(\d{4,})$/.exec(reference);
+
 function requestReference(state: WorkspaceState, timestamp: string): string {
-  const year = new Date(timestamp).getFullYear();
-  const prefix = `MOC-${year}-`;
+  const year = String(new Date(timestamp).getFullYear());
   const sequence =
     state.requests.reduce((max, request) => {
-      const match = request.reference.match(/^MOC-(\d{4})-(\d{4,})$/);
-      return match && Number(match[1]) === year
+      const match = requestReferenceParts(request.reference);
+      return match && match[1] === year
         ? Math.max(max, Number(match[2]))
         : max;
-    }, 0) + 1;
-  return `${prefix}${String(sequence).padStart(4, "0")}`;
+    }, state.deletedRequestSequences?.[year] ?? 0) + 1;
+  return `MOC-${year}-${String(sequence).padStart(4, "0")}`;
 }
 
 export function createRequest(
@@ -1320,6 +1323,31 @@ export function applyAction(
         ),
         activities: appendActivity(state, text, "cell-0", "rejection"),
         notifications: appendNotifications(state, text, ["cell-0"]),
+      };
+    }
+    case "delete-request": {
+      if (!isCell0(user))
+        throw new Error("Only an approved Cell 0 member can delete requests.");
+      const request = state.requests.find((item) => item.id === action.requestId);
+      if (!request) throw new Error("Request was not found.");
+
+      const [, year, digits] = requestReferenceParts(request.reference) ?? [];
+      const sequence = Number(digits);
+      const deletedRequestSequences = year && Number.isSafeInteger(sequence) &&
+        sequence > (state.deletedRequestSequences?.[year] ?? 0)
+        ? { ...state.deletedRequestSequences, [year]: sequence }
+        : state.deletedRequestSequences;
+
+      return {
+        ...state,
+        ...(deletedRequestSequences ? { deletedRequestSequences } : {}),
+        requests: state.requests.filter((item) => item.id !== request.id),
+        tasks: state.tasks.map((task) => {
+          if (task.requestId !== request.id) return task;
+          const { requestId: _requestId, ...detachedTask } = task;
+          return detachedTask;
+        }),
+        activities: appendActivity(state, `Request ${request.reference} deleted by ${user.name}.`, "cell-0", "request"),
       };
     }
     case "update-task": {
